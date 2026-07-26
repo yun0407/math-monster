@@ -1,0 +1,9 @@
+# Node.js
+node_modules/
+
+# Python 後端
+backend/venv/
+backend/__pycache__/
+
+# 系統檔案
+.DS_Store

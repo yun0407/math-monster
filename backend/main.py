@@ -46,7 +46,6 @@ class ConnectionManager:
         except Exception:
             pass
 
-    # ====== 新增：即時回報特務動態給主持人 ======
     async def broadcast_host_update(self):
         player_details = [
             {
@@ -88,7 +87,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 print(f"✅ [登入] {name} 已上線")
                 online_players = [n for n in manager.active_connections.values() if n and n != "HOST"]
                 await manager.broadcast({"type": "UPDATE_PLAYERS", "players": online_players})
-                await manager.broadcast_host_update() # 更新主持人面板
+                await manager.broadcast_host_update()
 
             elif action_type == "START_TIMER":
                 stage = message.get("stage")
@@ -103,7 +102,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 raw_ans = question_data.get("answer", "")
                 manager.current_correct_answer = str(raw_ans).strip().lower() if raw_ans else ""
 
-                # 回合開始，清空大家上一題的作答紀錄
                 for p in manager.players_state.values():
                     p["round_added_score"] = 0
                     p["round_time_taken"] = 0
@@ -113,14 +111,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     p["last_answer"] = ""
 
                 await manager.broadcast(message)
-                await manager.broadcast_host_update() # 更新主持人面板
+                await manager.broadcast_host_update()
 
             elif action_type == "SUBMIT_ANSWER":
                 name = message.get("name")
                 player_answer = str(message.get("answer", "")).strip().lower()
 
                 if name in manager.players_state and not manager.players_state[name].get("has_answered"):
-                    # 紀錄玩家送出的真實答案
                     manager.players_state[name]["last_answer"] = player_answer
 
                     if manager.current_stage == "stage_2":
@@ -171,7 +168,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         manager.players_state[name]["has_answered"] = True
                         manager.players_state[name]["is_correct"] = is_correct
 
-                    await manager.broadcast_host_update() # 玩家送出答案時，即時更新主持人面板
+                    await manager.broadcast_host_update()
 
             elif action_type == "CHANGE_STATE" and message.get("state") == "result":
                 if manager.current_stage == "stage_2":
@@ -204,6 +201,21 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif action_type == "CHANGE_STATE":
                 await manager.broadcast(message)
+
+            # ====== 新增：發布最終總排行 ======
+            elif action_type == "SHOW_FINAL_LEADERBOARD":
+                print("🏆 [主機指令] 發布最終總排行")
+                leaderboard = [
+                    {"name": k, "score": v["score"]}
+                    for k, v in manager.players_state.items()
+                ]
+                leaderboard = sorted(leaderboard, key=lambda x: x["score"], reverse=True)
+
+                await manager.broadcast({
+                    "type": "CHANGE_STATE",
+                    "state": "final_leaderboard",
+                    "leaderboard": leaderboard
+                })
 
             elif action_type == "RESET_SCORES":
                 print("🧹 [主機指令] 清除所有人積分")

@@ -57,14 +57,18 @@
     };
 
     const App = () => {
+      // 路由判定三種角色
       const isHost = new URLSearchParams(window.location.search).get('role') === 'host';
+      const isDisplay = new URLSearchParams(window.location.search).get('role') === 'display';
+      const isPlayer = !isHost && !isDisplay;
+
       const wsRef = useRef(null);
 
       const [isConnected, setIsConnected] = useState(false);
       const [gameState, setGameState] = useState('login');
       const [timeLeft, setTimeLeft] = useState(0);
       const [players, setPlayers] = useState([]);
-      const [hostPlayerDetails, setHostPlayerDetails] = useState([]);
+      const [hostPlayerDetails, setHostPlayerDetails] = useState([]); // 主持人/大螢幕共用的即時狀態
       const [currentQuestionData, setCurrentQuestionData] = useState(null);
       const [selectedQ, setSelectedQ] = useState({ stage_1: 0, stage_4: 0 });
 
@@ -89,41 +93,47 @@
       useEffect(() => { nicknameRef.current = nickname; }, [nickname]);
 
       useEffect(() => {
-        const ws = new WebSocket('wss://math-monster-backend.onrender.com/ws');
+        const ws = new WebSocket('ws://localhost:8000/ws');
         wsRef.current = ws;
 
-        ws.onopen = () => { setIsConnected(true); if (isHost) ws.send(JSON.stringify({ type: 'PLAYER_JOIN', name: 'HOST' })); };
+        ws.onopen = () => {
+            setIsConnected(true);
+            if (isHost) ws.send(JSON.stringify({ type: 'PLAYER_JOIN', name: 'HOST' }));
+            if (isDisplay) ws.send(JSON.stringify({ type: 'PLAYER_JOIN', name: 'DISPLAY' }));
+        };
         ws.onclose = () => { setIsConnected(false); };
 
         ws.onmessage = (event) => {
           const data = JSON.parse(event.data);
 
           if (data.type === 'SCORES_RESET') {
-            setMyScore(0);
-            setMyAddedScore(0);
+            if (isPlayer) {
+              setMyScore(0); setMyAddedScore(0);
+            }
             if (isHost) alert("所有玩家積分已成功歸零！");
             setLeaderboardData(prev => prev.map(p => ({...p, score: 0, added_score: 0})));
             return;
           }
 
-          if (isHost) {
-            if (data.type === 'UPDATE_PLAYERS') setPlayers(data.players.filter(p => p !== 'HOST'));
+          if (isHost || isDisplay) {
+            // 大螢幕和主持人共用的接收邏輯
+            if (data.type === 'UPDATE_PLAYERS') setPlayers(data.players);
             if (data.type === 'HOST_UPDATE') setHostPlayerDetails(data.player_details);
-
             if (data.type === 'CHANGE_STATE') {
               setGameState(data.state);
-              if ((data.state === 'result' || data.state === 'final_leaderboard') && data.leaderboard) {
-                setLeaderboardData(data.leaderboard);
+              if (data.state === 'result' && data.leaderboard) {
+                  setLeaderboardData(data.leaderboard);
+                  setCorrectAnswer(data.correct_answer);
               }
             }
-
             if (data.type === 'START_TIMER') {
               setCurrentQuestionData(data.questionData);
               setIsBingoStage(data.stage === 'stage_2');
               startLocalTimer(data.time, data.stage);
             }
+          }
 
-          } else {
+          if (isPlayer) {
             if (data.type === 'CHANGE_STATE') {
               setGameState(data.state);
               if (data.state === 'login') { setNickname(''); }
@@ -139,11 +149,6 @@
                   setMyRank(myData.rank);
                 }
               }
-              if (data.state === 'final_leaderboard' && data.leaderboard) {
-                setLeaderboardData(data.leaderboard);
-                const myData = data.leaderboard.find(p => p.name === nicknameRef.current);
-                if (myData) setMyScore(myData.score);
-              }
             } else if (data.type === 'START_TIMER') {
               setCurrentQuestionData(data.questionData);
               setIsBingoStage(data.stage === 'stage_2');
@@ -152,7 +157,7 @@
           }
         };
         return () => ws.close();
-      }, [isHost]);
+      }, [isHost, isDisplay, isPlayer]);
 
       const safeSend = (msgObject) => {
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(msgObject));
@@ -174,7 +179,7 @@
               clearInterval(window.gameTimer);
               if (stage !== 'stage_2') {
                   if (isHost) safeSend({ type: 'CHANGE_STATE', state: 'result' });
-                  else if (!isSubmitted) { safeSend({ type: 'SUBMIT_ANSWER', name: nicknameRef.current, answer: "未作答" }); setIsSubmitted(true); }
+                  else if (isPlayer && !isSubmitted) { safeSend({ type: 'SUBMIT_ANSWER', name: nicknameRef.current, answer: "未作答" }); setIsSubmitted(true); }
               }
               return 0;
             }
@@ -209,14 +214,14 @@
       };
 
       useEffect(() => {
-        if (!isHost && gameState === 'stage_2' && bingoGrid.length === 0) {
+        if (isPlayer && gameState === 'stage_2' && bingoGrid.length === 0) {
           const allNums = Array.from({length: 25}, (_, i) => i + 1);
           const shuffled = allNums.sort(() => Math.random() - 0.5);
           setBingoGrid(shuffled.map(n => ({ num: n, selected: false })));
           setBingoLines(0);
         }
         if (gameState !== 'stage_2') setBingoGrid([]);
-      }, [gameState, isHost]);
+      }, [gameState, isPlayer]);
 
       const checkBingo = (grid) => {
         let lines = 0;
@@ -240,7 +245,106 @@
       };
 
       // ==========================================
-      // 主持人後台
+      // 大螢幕觀戰面板 (Display Role)
+      // ==========================================
+      if (isDisplay) {
+        return (
+          <div className="min-h-screen bg-[#0A0A0A] text-white p-8 font-mono flex flex-col relative overflow-hidden">
+            <MathCanvasBackground />
+
+            {/* Display Header */}
+            <header className="relative z-10 flex justify-between items-center border-b-4 border-[#00FF41] pb-6 mb-10 bg-black/50 p-6 rounded-3xl shadow-[0_0_30px_rgba(0,255,65,0.2)]">
+              <h1 className="text-5xl font-bold text-[#00FF41] tracking-widest drop-shadow-[0_0_10px_#00FF41]">MATH_MONSTER LIVE</h1>
+              <div className="text-5xl">
+                {gameState.startsWith('stage_') && !isBingoStage && (
+                  <span className="text-red-500 font-bold animate-pulse drop-shadow-[0_0_10px_#ef4444]">⏱️ {timeLeft}s</span>
+                )}
+                {isBingoStage && gameState.startsWith('stage_') && (
+                  <span className="text-purple-400 font-bold drop-shadow-[0_0_10px_#a855f7]">🎲 BINGO 進行中</span>
+                )}
+              </div>
+            </header>
+
+            <div className="relative z-10 flex-1 flex flex-col items-center w-full max-w-7xl mx-auto">
+
+              {/* 大螢幕：等待畫面 */}
+              {(gameState === 'login' || gameState === 'waiting') && (
+                <div className="text-center mt-20 w-full">
+                  <h2 className="text-6xl text-[#00FF41] mb-12 font-bold animate-pulse drop-shadow-[0_0_15px_#00FF41]">等待特務連線中...</h2>
+                  <div className="flex flex-wrap justify-center gap-6">
+                    {players.length === 0 && <p className="text-gray-500 text-3xl">尚無特務加入</p>}
+                    {players.map((p, i) => (
+                      <span key={i} className="bg-gray-800 text-white px-8 py-4 rounded-full text-4xl border-2 border-[#00FF41]/50 shadow-[0_0_15px_rgba(0,255,65,0.3)]">
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 大螢幕：遊戲進行中 (即時動態牆) */}
+              {gameState.startsWith('stage_') && (
+                <div className="w-full flex flex-col items-center">
+                  <h2 className="text-4xl text-white mb-12 bg-black/80 px-10 py-5 rounded-2xl border-2 border-[#00FF41]/50 text-center leading-relaxed">
+                    {isBingoStage ? "STAGE 02: 5x5 BINGO" : currentQuestionData?.text}
+                  </h2>
+
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 w-full">
+                    {hostPlayerDetails.map((p, i) => (
+                      <div key={i} className={`flex flex-col items-center justify-center p-8 rounded-3xl border-4 transition-all duration-300 transform ${p.has_answered ? 'border-[#00FF41] bg-[#00FF41]/20 shadow-[0_0_30px_rgba(0,255,65,0.5)] scale-105' : 'border-yellow-500 bg-yellow-500/10'}`}>
+                        <span className="text-5xl text-white font-bold mb-8">{p.name}</span>
+                        <span className={`text-3xl font-bold px-8 py-3 rounded-full tracking-widest ${p.has_answered ? 'bg-[#00FF41] text-black' : 'bg-yellow-500 text-black animate-pulse'}`}>
+                          {p.has_answered ? (isBingoStage ? 'BINGO!' : '已送出') : '作答中...'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 大螢幕：結算與排行榜 */}
+              {gameState === 'result' && (
+                <div className="w-full flex flex-col items-center">
+                  {correctAnswer && !isBingoStage && (
+                    <div className="mb-10 text-center bg-black/80 px-16 py-6 rounded-3xl border-4 border-white shadow-[0_0_20px_rgba(255,255,255,0.3)]">
+                      <p className="text-gray-300 text-2xl mb-2">正確答案</p>
+                      <p className="text-6xl text-white font-bold tracking-widest drop-shadow-[0_0_15px_#ffffff]">{correctAnswer}</p>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 w-full">
+                    {leaderboardData.map((p, i) => (
+                      <div key={i} className="bg-black/80 p-8 rounded-3xl border-2 border-[#00FF41]/50 flex flex-col relative overflow-hidden shadow-xl">
+                        <div className={`absolute top-0 right-0 text-black font-bold px-6 py-2 rounded-bl-2xl text-2xl ${i === 0 ? 'bg-yellow-400' : 'bg-[#00FF41]'}`}>
+                          Top {i+1}
+                        </div>
+                        <div className="text-4xl text-white font-bold mb-6">{p.name}</div>
+
+                        <div className="flex justify-between items-center mb-6">
+                          <span className="text-2xl text-gray-400">總積分</span>
+                          <span className="text-5xl text-yellow-400 font-bold">{p.score}</span>
+                        </div>
+
+                        <div className="border-t border-gray-600 pt-6 flex justify-between items-center">
+                          {isBingoStage ? (
+                            p.rank > 0 ? <span className="text-green-400 text-3xl font-bold">🎉 第 {p.rank} 名</span> : <span className="text-gray-400 text-2xl">未進榜</span>
+                          ) : (
+                            p.is_correct ? <span className="text-green-400 text-3xl font-bold">✅ 正確</span> : <span className="text-red-500 text-3xl font-bold">❌ 錯誤</span>
+                          )}
+                          <span className="text-yellow-400 font-bold text-3xl">+{p.added_score}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      // ==========================================
+      // 主持人後台 (Host Role)
       // ==========================================
       if (isHost) {
         return (
@@ -259,13 +363,10 @@
             </header>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-
               <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 max-h-[80vh] overflow-y-auto">
-                {(gameState === 'result' || gameState === 'final_leaderboard') ? (
+                {gameState === 'result' ? (
                   <>
-                    <h2 className="text-xl mb-4 border-b border-gray-600 pb-2 text-yellow-400 font-bold">
-                      🏆 {gameState === 'final_leaderboard' ? '最終總排行' : '全班排行榜'}
-                    </h2>
+                    <h2 className="text-xl mb-4 border-b border-gray-600 pb-2 text-yellow-400 font-bold">🏆 全班排行榜</h2>
                     <div className="flex flex-col gap-2">
                       {leaderboardData.map((p, i) => (
                         <div key={i} className="bg-gray-900 px-4 py-3 rounded flex justify-between items-center border border-[#00FF41]/30">
@@ -275,7 +376,7 @@
                           </div>
                           <div className="text-right">
                              <div className="text-xl text-yellow-400 font-bold">{p.score} 分</div>
-                             {gameState === 'result' && <div className="text-xs text-gray-500">+{p.added_score} ({p.rank > 0 ? `第${p.rank}名` : p.time_taken+'s'})</div>}
+                             <div className="text-xs text-gray-500">+{p.added_score} ({p.rank > 0 ? `第${p.rank}名` : p.time_taken+'s'})</div>
                           </div>
                         </div>
                       ))}
@@ -310,27 +411,15 @@
               <div className="md:col-span-2 space-y-6">
                 <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                   <h2 className="text-xl mb-4 border-b border-gray-600 pb-2">全局控制</h2>
-                  <div className="flex gap-4 flex-wrap items-center">
+                  <div className="flex gap-4">
                     <button onClick={() => hostChangeState('waiting')} className="px-6 py-3 bg-blue-900/50 hover:bg-blue-900 border border-blue-500 rounded text-blue-100 transition">切換至等待大廳</button>
                     <button onClick={() => hostChangeState('result')} className="px-6 py-3 bg-yellow-900/50 hover:bg-yellow-900 border border-yellow-500 rounded text-yellow-100 transition">強制進入結算 (提早收卷)</button>
-
-                    {/* 🎉 【新增】：發布最終總排行按鈕 */}
-                    <button onClick={() => safeSend({ type: 'SHOW_FINAL_LEADERBOARD' })} className="px-6 py-3 bg-purple-900/50 hover:bg-purple-900 border border-purple-500 rounded text-purple-100 transition shadow-[0_0_10px_rgba(168,85,247,0.4)]">
-                      推送最終總排行 (Game Over)
-                    </button>
-
-                    {gameState.startsWith('stage_') && gameState !== 'stage_2' && (
-                      <div className="ml-auto bg-red-950/50 border border-red-500 px-6 py-3 rounded text-red-500 font-bold text-xl flex items-center gap-2">
-                        ⏱️ {timeLeft}s
-                      </div>
-                    )}
                   </div>
                 </div>
 
                 <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                  <h2 className="text-xl mb-4 border-b border-gray-600 pb-2">題庫發送區 (倒數完會自動結算)</h2>
+                  <h2 className="text-xl mb-4 border-b border-gray-600 pb-2">題庫發送區</h2>
                   <div className="grid grid-cols-2 gap-4">
-
                     <div className="p-4 bg-gray-900 border border-[#00FF41]/50 rounded-xl">
                       <div className="text-[#00FF41] mb-2 font-bold">第一關: 數字獵人</div>
                       <select className="w-full bg-black text-white p-2 rounded mb-3 border border-gray-600" onChange={(e) => setSelectedQ({...selectedQ, stage_1: parseInt(e.target.value)})}>
@@ -341,13 +430,8 @@
 
                     <div className="p-4 bg-gray-900 border border-purple-500/50 rounded-xl">
                       <div className="text-purple-400 mb-2 font-bold">第二關: 5x5 Bingo</div>
-                      <p className="text-xs text-gray-400 mb-4 h-12">無倒數計時，由主持人現場喊號，前四位連滿三條線者獲勝。滿四人會自動結算。</p>
+                      <p className="text-xs text-gray-400 mb-4 h-12">無倒數，前四位連滿三條線者獲勝。滿四人會自動結算。</p>
                       <button onClick={() => hostStartStage('stage_2', '')} className="w-full bg-purple-700 hover:bg-purple-600 text-white p-2 rounded font-bold transition shadow-[0_0_10px_rgba(168,85,247,0.3)]">開始 Bingo</button>
-                    </div>
-
-                    <div className="p-4 bg-gray-900 border border-gray-700 rounded-xl opacity-50 cursor-not-allowed">
-                      <div className="text-gray-400 mb-2 font-bold">第三關: 數學怪物 (維護中)</div>
-                      <button disabled className="w-full bg-gray-700 text-gray-500 p-2 rounded font-bold mt-10">暫時停用</button>
                     </div>
 
                     <div className="p-4 bg-gray-900 border border-red-500/50 rounded-xl">
@@ -357,7 +441,6 @@
                       </select>
                       <button onClick={() => hostStartStage('stage_4', 'DB_STAGE_4')} className="w-full bg-red-700 hover:bg-red-600 text-white p-2 rounded font-bold transition">發送偵探謎題</button>
                     </div>
-
                   </div>
                 </div>
               </div>
@@ -367,7 +450,7 @@
       }
 
       // ==========================================
-      // 玩家前端遊戲作答區
+      // 玩家前端遊戲作答區 (Player Role)
       // ==========================================
       const renderStageContent = () => {
         if (isSubmitted && gameState !== 'stage_2') {
@@ -492,7 +575,7 @@
                 </div>
               )}
 
-              {/* 【分數結算畫面 (一般單回合)】 */}
+              {/* 【分數結算與全班排行榜畫面】 */}
               {gameState === 'result' && (
                 <div className="text-center space-y-6 w-full max-w-2xl mx-auto my-auto py-8">
                   <h2 className="text-4xl md:text-6xl font-bold text-white drop-shadow-[0_0_10px_#00FF41]">回合結束</h2>
@@ -550,33 +633,6 @@
                        </div>
                     </div>
 
-                  </div>
-                </div>
-              )}
-
-              {/* 🎉 【全新功能】：最終總排行畫面 */}
-              {gameState === 'final_leaderboard' && (
-                <div className="text-center w-full max-w-3xl mx-auto my-auto py-8 flex flex-col h-full max-h-[80vh]">
-                  <h2 className="text-4xl md:text-6xl font-bold text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.8)] mb-6 animate-pulse">🏆 最終總排行 🏆</h2>
-
-                  <div className="bg-black/60 p-6 md:p-8 rounded-2xl border-2 border-yellow-500/50 shadow-[0_0_30px_rgba(250,204,21,0.2)] flex-1 overflow-y-auto">
-                    <div className="space-y-3">
-                      {leaderboardData.map((p, i) => (
-                        <div key={i} className={`flex justify-between items-center text-lg md:text-2xl p-4 rounded-xl border transition-all
-                          ${i === 0 ? 'bg-yellow-500/20 border-yellow-400 text-yellow-400 font-bold scale-105 my-4 shadow-[0_0_15px_rgba(250,204,21,0.5)]' :
-                            i === 1 ? 'bg-gray-300/10 border-gray-300 text-gray-200 font-bold' :
-                            i === 2 ? 'bg-orange-400/10 border-orange-400 text-orange-300 font-bold' :
-                            'bg-[#00FF41]/5 border-[#00FF41]/20 text-white'}`}>
-                          <div className="flex gap-4 items-center">
-                            <span className="w-8 text-center text-3xl">
-                              {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="text-lg text-gray-500">{i + 1}.</span>}
-                            </span>
-                            <span className={p.name === nicknameRef.current ? "underline decoration-[#00FF41] underline-offset-4" : ""}>{p.name}</span>
-                          </div>
-                          <span className="tracking-wider">{p.score} 分</span>
-                        </div>
-                      ))}
-                    </div>
                   </div>
                 </div>
               )}

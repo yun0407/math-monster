@@ -77,7 +77,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 name = message.get("name")
                 manager.active_connections[websocket] = name
 
-                if name != "HOST" and name not in manager.players_state:
+                # ==== 修正：HOST 與 DISPLAY 都不列入計分板 ====
+                if name not in ["HOST", "DISPLAY"] and name not in manager.players_state:
                     manager.players_state[name] = {
                         "score": 0, "partner": None, "cards": [],
                         "is_correct": False, "rank": -1,
@@ -85,7 +86,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     }
 
                 print(f"✅ [登入] {name} 已上線")
-                online_players = [n for n in manager.active_connections.values() if n and n != "HOST"]
+                online_players = [n for n in manager.active_connections.values() if n and n not in ["HOST", "DISPLAY"]]
                 await manager.broadcast({"type": "UPDATE_PLAYERS", "players": online_players})
                 await manager.broadcast_host_update()
 
@@ -136,10 +137,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             manager.players_state[name]["has_answered"] = True
                             manager.players_state[name]["rank"] = rank
                             manager.players_state[name]["is_correct"] = True
-                            print(f"🎯 [BINGO] {name} 第 {rank} 名, 獲得 {points} 分")
 
                             if len(manager.bingo_winners) >= 4:
-                                print("🔔 [BINGO] 已滿 4 人，自動強制結算")
                                 for p_name, p_state in manager.players_state.items():
                                     if not p_state.get("has_answered"):
                                         p_state["round_added_score"] = 3
@@ -202,23 +201,7 @@ async def websocket_endpoint(websocket: WebSocket):
             elif action_type == "CHANGE_STATE":
                 await manager.broadcast(message)
 
-            # ====== 新增：發布最終總排行 ======
-            elif action_type == "SHOW_FINAL_LEADERBOARD":
-                print("🏆 [主機指令] 發布最終總排行")
-                leaderboard = [
-                    {"name": k, "score": v["score"]}
-                    for k, v in manager.players_state.items()
-                ]
-                leaderboard = sorted(leaderboard, key=lambda x: x["score"], reverse=True)
-
-                await manager.broadcast({
-                    "type": "CHANGE_STATE",
-                    "state": "final_leaderboard",
-                    "leaderboard": leaderboard
-                })
-
             elif action_type == "RESET_SCORES":
-                print("🧹 [主機指令] 清除所有人積分")
                 manager.bingo_winners = []
                 for p in manager.players_state.values():
                     p["score"] = 0

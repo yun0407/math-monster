@@ -57,7 +57,6 @@
     };
 
     const App = () => {
-      // 路由判定三種角色
       const isHost = new URLSearchParams(window.location.search).get('role') === 'host';
       const isDisplay = new URLSearchParams(window.location.search).get('role') === 'display';
       const isPlayer = !isHost && !isDisplay;
@@ -68,7 +67,7 @@
       const [gameState, setGameState] = useState('login');
       const [timeLeft, setTimeLeft] = useState(0);
       const [players, setPlayers] = useState([]);
-      const [hostPlayerDetails, setHostPlayerDetails] = useState([]); // 主持人/大螢幕共用的即時狀態
+      const [hostPlayerDetails, setHostPlayerDetails] = useState([]);
       const [currentQuestionData, setCurrentQuestionData] = useState(null);
       const [selectedQ, setSelectedQ] = useState({ stage_1: 0, stage_4: 0 });
 
@@ -89,11 +88,17 @@
       const [myTimeTaken, setMyTimeTaken] = useState(0);
       const [amICorrect, setAmICorrect] = useState(false);
       const [myRank, setMyRank] = useState(-1);
+      const [myLastAnswer, setMyLastAnswer] = useState(''); // 新增：紀錄玩家最後答案判定逾時
 
       useEffect(() => { nicknameRef.current = nickname; }, [nickname]);
 
       useEffect(() => {
-        const ws = new WebSocket('ws://localhost:8000/ws');
+        // 💡 智能判斷網址：本地開發連 localhost，Vercel 部署連 Render
+        const backendUrl = window.location.hostname === 'localhost'
+          ? 'ws://localhost:8000/ws'
+          : 'wss://math-monster-backend.onrender.com/ws'; // ⚠️ 請將這裡換成你的實際 Render 網址！！
+
+        const ws = new WebSocket(backendUrl);
         wsRef.current = ws;
 
         ws.onopen = () => {
@@ -107,16 +112,13 @@
           const data = JSON.parse(event.data);
 
           if (data.type === 'SCORES_RESET') {
-            if (isPlayer) {
-              setMyScore(0); setMyAddedScore(0);
-            }
+            if (isPlayer) { setMyScore(0); setMyAddedScore(0); }
             if (isHost) alert("所有玩家積分已成功歸零！");
             setLeaderboardData(prev => prev.map(p => ({...p, score: 0, added_score: 0})));
             return;
           }
 
           if (isHost || isDisplay) {
-            // 大螢幕和主持人共用的接收邏輯
             if (data.type === 'UPDATE_PLAYERS') setPlayers(data.players);
             if (data.type === 'HOST_UPDATE') setHostPlayerDetails(data.player_details);
             if (data.type === 'CHANGE_STATE') {
@@ -147,6 +149,7 @@
                   setMyTimeTaken(myData.time_taken);
                   setAmICorrect(myData.is_correct);
                   setMyRank(myData.rank);
+                  setMyLastAnswer(myData.last_answer); // 紀錄最後填答狀態
                 }
               }
             } else if (data.type === 'START_TIMER') {
@@ -244,18 +247,26 @@
         setBingoLines(checkBingo(newGrid));
       };
 
+      // 💡 大螢幕動態佈局運算：確保人再多也能等比縮小塞滿一頁
+      const getDisplaySizing = (count) => {
+        if (count <= 4) return { gridCols: 'grid-cols-2', gap: 'gap-8', cardP: 'p-8', name: 'text-5xl mb-8', status: 'text-3xl px-8 py-3', badge: 'text-2xl px-6 py-2', scoreBox: 'mb-6', scoreTitle: 'text-2xl', scoreNum: 'text-5xl', resultText: 'text-3xl', resultScore: 'text-3xl', resultIcon: 'text-3xl' };
+        if (count <= 9) return { gridCols: 'grid-cols-3', gap: 'gap-4', cardP: 'p-4', name: 'text-3xl mb-4', status: 'text-xl px-4 py-2', badge: 'text-xl px-4 py-1', scoreBox: 'mb-4', scoreTitle: 'text-xl', scoreNum: 'text-3xl', resultText: 'text-xl', resultScore: 'text-xl', resultIcon: 'text-xl' };
+        if (count <= 16) return { gridCols: 'grid-cols-4', gap: 'gap-3', cardP: 'p-3', name: 'text-2xl mb-2', status: 'text-base px-3 py-1', badge: 'text-base px-3 py-1', scoreBox: 'mb-2', scoreTitle: 'text-base', scoreNum: 'text-2xl', resultText: 'text-base', resultScore: 'text-lg', resultIcon: 'text-lg' };
+        if (count <= 25) return { gridCols: 'grid-cols-5', gap: 'gap-2', cardP: 'p-2', name: 'text-xl mb-1', status: 'text-sm px-2 py-1', badge: 'text-sm px-2 py-1', scoreBox: 'mb-1', scoreTitle: 'text-sm', scoreNum: 'text-xl', resultText: 'text-sm', resultScore: 'text-base', resultIcon: 'text-base' };
+        return { gridCols: 'grid-cols-6', gap: 'gap-2', cardP: 'p-2', name: 'text-lg mb-1', status: 'text-xs px-2 py-1', badge: 'text-xs px-2 py-1', scoreBox: 'mb-1', scoreTitle: 'text-xs', scoreNum: 'text-lg', resultText: 'text-xs', resultScore: 'text-sm', resultIcon: 'text-sm' };
+      };
+
       // ==========================================
       // 大螢幕觀戰面板 (Display Role)
       // ==========================================
       if (isDisplay) {
         return (
-          <div className="min-h-screen bg-[#0A0A0A] text-white p-8 font-mono flex flex-col relative overflow-hidden">
+          <div className="h-screen bg-[#0A0A0A] text-white p-6 md:p-8 font-mono flex flex-col relative overflow-hidden">
             <MathCanvasBackground />
 
-            {/* Display Header */}
-            <header className="relative z-10 flex justify-between items-center border-b-4 border-[#00FF41] pb-6 mb-10 bg-black/50 p-6 rounded-3xl shadow-[0_0_30px_rgba(0,255,65,0.2)]">
-              <h1 className="text-5xl font-bold text-[#00FF41] tracking-widest drop-shadow-[0_0_10px_#00FF41]">MATH_MONSTER LIVE</h1>
-              <div className="text-5xl">
+            <header className="relative z-10 flex justify-between items-center border-b-4 border-[#00FF41] pb-4 md:pb-6 mb-4 md:mb-8 bg-black/50 p-4 md:p-6 rounded-3xl shadow-[0_0_30px_rgba(0,255,65,0.2)] shrink-0">
+              <h1 className="text-3xl md:text-5xl font-bold text-[#00FF41] tracking-widest drop-shadow-[0_0_10px_#00FF41]">MATH_MONSTER LIVE</h1>
+              <div className="text-3xl md:text-5xl">
                 {gameState.startsWith('stage_') && !isBingoStage && (
                   <span className="text-red-500 font-bold animate-pulse drop-shadow-[0_0_10px_#ef4444]">⏱️ {timeLeft}s</span>
                 )}
@@ -265,9 +276,8 @@
               </div>
             </header>
 
-            <div className="relative z-10 flex-1 flex flex-col items-center w-full max-w-7xl mx-auto">
+            <div className="relative z-10 flex-1 flex flex-col w-full max-w-7xl mx-auto min-h-0">
 
-              {/* 大螢幕：等待畫面 */}
               {(gameState === 'login' || gameState === 'waiting') && (
                 <div className="text-center mt-20 w-full">
                   <h2 className="text-6xl text-[#00FF41] mb-12 font-bold animate-pulse drop-shadow-[0_0_15px_#00FF41]">等待特務連線中...</h2>
@@ -282,60 +292,72 @@
                 </div>
               )}
 
-              {/* 大螢幕：遊戲進行中 (即時動態牆) */}
+              {/* 大螢幕動態作答牆 */}
               {gameState.startsWith('stage_') && (
-                <div className="w-full flex flex-col items-center">
-                  <h2 className="text-4xl text-white mb-12 bg-black/80 px-10 py-5 rounded-2xl border-2 border-[#00FF41]/50 text-center leading-relaxed">
+                <div className="w-full flex flex-col items-center h-full">
+                  <h2 className="text-2xl md:text-4xl text-white mb-6 bg-black/80 px-10 py-5 rounded-2xl border-2 border-[#00FF41]/50 text-center leading-relaxed shrink-0">
                     {isBingoStage ? "STAGE 02: 5x5 BINGO" : currentQuestionData?.text}
                   </h2>
 
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 w-full">
-                    {hostPlayerDetails.map((p, i) => (
-                      <div key={i} className={`flex flex-col items-center justify-center p-8 rounded-3xl border-4 transition-all duration-300 transform ${p.has_answered ? 'border-[#00FF41] bg-[#00FF41]/20 shadow-[0_0_30px_rgba(0,255,65,0.5)] scale-105' : 'border-yellow-500 bg-yellow-500/10'}`}>
-                        <span className="text-5xl text-white font-bold mb-8">{p.name}</span>
-                        <span className={`text-3xl font-bold px-8 py-3 rounded-full tracking-widest ${p.has_answered ? 'bg-[#00FF41] text-black' : 'bg-yellow-500 text-black animate-pulse'}`}>
-                          {p.has_answered ? (isBingoStage ? 'BINGO!' : '已送出') : '作答中...'}
-                        </span>
+                  {(() => {
+                    const style = getDisplaySizing(hostPlayerDetails.length || 1);
+                    return (
+                      <div className={`grid ${style.gridCols} ${style.gap} w-full flex-1 min-h-0`}>
+                        {hostPlayerDetails.map((p, i) => (
+                          <div key={i} className={`flex flex-col items-center justify-center ${style.cardP} rounded-2xl border-4 transition-all duration-300 transform ${p.has_answered ? 'border-[#00FF41] bg-[#00FF41]/20 shadow-[0_0_30px_rgba(0,255,65,0.5)] scale-105' : 'border-yellow-500 bg-yellow-500/10'}`}>
+                            <span className={`text-white font-bold ${style.name}`}>{p.name}</span>
+                            <span className={`font-bold rounded-full tracking-widest ${style.status} ${p.has_answered ? 'bg-[#00FF41] text-black' : 'bg-yellow-500 text-black animate-pulse'}`}>
+                              {p.has_answered ? (isBingoStage ? 'BINGO!' : '已送出') : '作答中...'}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()}
                 </div>
               )}
 
-              {/* 大螢幕：結算與排行榜 */}
+              {/* 大螢幕結算排行榜 */}
               {gameState === 'result' && (
-                <div className="w-full flex flex-col items-center">
+                <div className="w-full flex flex-col items-center h-full">
                   {correctAnswer && !isBingoStage && (
-                    <div className="mb-10 text-center bg-black/80 px-16 py-6 rounded-3xl border-4 border-white shadow-[0_0_20px_rgba(255,255,255,0.3)]">
-                      <p className="text-gray-300 text-2xl mb-2">正確答案</p>
-                      <p className="text-6xl text-white font-bold tracking-widest drop-shadow-[0_0_15px_#ffffff]">{correctAnswer}</p>
+                    <div className="mb-6 text-center bg-black/80 px-16 py-4 rounded-3xl border-4 border-white shadow-[0_0_20px_rgba(255,255,255,0.3)] shrink-0">
+                      <p className="text-gray-300 text-xl md:text-2xl mb-1">正確答案</p>
+                      <p className="text-4xl md:text-6xl text-white font-bold tracking-widest drop-shadow-[0_0_15px_#ffffff]">{correctAnswer}</p>
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 w-full">
-                    {leaderboardData.map((p, i) => (
-                      <div key={i} className="bg-black/80 p-8 rounded-3xl border-2 border-[#00FF41]/50 flex flex-col relative overflow-hidden shadow-xl">
-                        <div className={`absolute top-0 right-0 text-black font-bold px-6 py-2 rounded-bl-2xl text-2xl ${i === 0 ? 'bg-yellow-400' : 'bg-[#00FF41]'}`}>
-                          Top {i+1}
-                        </div>
-                        <div className="text-4xl text-white font-bold mb-6">{p.name}</div>
+                  {(() => {
+                    const style = getDisplaySizing(leaderboardData.length || 1);
+                    return (
+                      <div className={`grid ${style.gridCols} ${style.gap} w-full flex-1 min-h-0`}>
+                        {leaderboardData.map((p, i) => (
+                          <div key={i} className={`bg-black/80 ${style.cardP} rounded-2xl border-2 border-[#00FF41]/50 flex flex-col relative overflow-hidden shadow-xl justify-between`}>
+                            <div className={`absolute top-0 right-0 text-black font-bold rounded-bl-2xl ${style.badge} ${i === 0 ? 'bg-yellow-400' : 'bg-[#00FF41]'}`}>
+                              Top {i+1}
+                            </div>
+                            <div className={`text-white font-bold ${style.name}`}>{p.name}</div>
 
-                        <div className="flex justify-between items-center mb-6">
-                          <span className="text-2xl text-gray-400">總積分</span>
-                          <span className="text-5xl text-yellow-400 font-bold">{p.score}</span>
-                        </div>
+                            <div className={`flex justify-between items-center ${style.scoreBox}`}>
+                              <span className={`text-gray-400 ${style.scoreTitle}`}>總積分</span>
+                              <span className={`text-yellow-400 font-bold ${style.scoreNum}`}>{p.score}</span>
+                            </div>
 
-                        <div className="border-t border-gray-600 pt-6 flex justify-between items-center">
-                          {isBingoStage ? (
-                            p.rank > 0 ? <span className="text-green-400 text-3xl font-bold">🎉 第 {p.rank} 名</span> : <span className="text-gray-400 text-2xl">未進榜</span>
-                          ) : (
-                            p.is_correct ? <span className="text-green-400 text-3xl font-bold">✅ 正確</span> : <span className="text-red-500 text-3xl font-bold">❌ 錯誤</span>
-                          )}
-                          <span className="text-yellow-400 font-bold text-3xl">+{p.added_score}</span>
-                        </div>
+                            <div className="border-t border-gray-600 pt-2 flex justify-between items-center">
+                              {isBingoStage ? (
+                                p.rank > 0 ? <span className={`text-green-400 font-bold ${style.resultText}`}>🎉 第 {p.rank} 名</span> : <span className={`text-gray-400 ${style.resultText}`}>未進榜</span>
+                              ) : (
+                                p.is_correct ? <span className={`text-green-400 font-bold ${style.resultIcon}`}>✅ 正確</span> : (
+                                  p.last_answer === '未作答' ? <span className={`text-gray-400 font-bold ${style.resultIcon}`}>⏳ 未作答</span> : <span className={`text-red-500 font-bold ${style.resultIcon}`}>❌ 錯誤</span>
+                                )
+                              )}
+                              <span className={`text-yellow-400 font-bold ${style.resultScore}`}>+{p.added_score}</span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
@@ -575,7 +597,7 @@
                 </div>
               )}
 
-              {/* 【分數結算與全班排行榜畫面】 */}
+              {/* 【分數結算與全班排行榜畫面 (Player View)】 */}
               {gameState === 'result' && (
                 <div className="text-center space-y-6 w-full max-w-2xl mx-auto my-auto py-8">
                   <h2 className="text-4xl md:text-6xl font-bold text-white drop-shadow-[0_0_10px_#00FF41]">回合結束</h2>
@@ -611,7 +633,11 @@
                           </p>
                         </div>
                       ) : (
-                        <p className="text-3xl text-red-500 font-bold py-4">❌ 答案錯誤 / 未作答</p>
+                        myLastAnswer === '未作答' ? (
+                          <p className="text-3xl text-gray-400 font-bold py-4">⏳ 逾時未作答</p>
+                        ) : (
+                          <p className="text-3xl text-red-500 font-bold py-4">❌ 答案錯誤</p>
+                        )
                       )
                     )}
 

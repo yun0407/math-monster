@@ -77,7 +77,6 @@ async def websocket_endpoint(websocket: WebSocket):
                 name = message.get("name")
                 manager.active_connections[websocket] = name
 
-                # ==== 修正：HOST 與 DISPLAY 都不列入計分板 ====
                 if name not in ["HOST", "DISPLAY"] and name not in manager.players_state:
                     manager.players_state[name] = {
                         "score": 0, "partner": None, "cards": [],
@@ -137,8 +136,10 @@ async def websocket_endpoint(websocket: WebSocket):
                             manager.players_state[name]["has_answered"] = True
                             manager.players_state[name]["rank"] = rank
                             manager.players_state[name]["is_correct"] = True
+                            print(f"🎯 [BINGO] {name} 第 {rank} 名, 獲得 {points} 分")
 
                             if len(manager.bingo_winners) >= 4:
+                                print("🔔 [BINGO] 已滿 4 人，自動強制結算")
                                 for p_name, p_state in manager.players_state.items():
                                     if not p_state.get("has_answered"):
                                         p_state["round_added_score"] = 3
@@ -146,7 +147,8 @@ async def websocket_endpoint(websocket: WebSocket):
                                         p_state["has_answered"] = True
                                         p_state["rank"] = 0
 
-                                leaderboard = [{"name": k, "score": v["score"], "added_score": v.get("round_added_score", 0), "time_taken": v.get("round_time_taken", 0), "is_correct": v.get("is_correct", False), "rank": v.get("rank", -1)} for k, v in manager.players_state.items()]
+                                # 💡【新增】：把 last_answer 也打包進 leaderboard 廣播
+                                leaderboard = [{"name": k, "score": v["score"], "added_score": v.get("round_added_score", 0), "time_taken": v.get("round_time_taken", 0), "is_correct": v.get("is_correct", False), "rank": v.get("rank", -1), "last_answer": v.get("last_answer", "")} for k, v in manager.players_state.items()]
                                 leaderboard = sorted(leaderboard, key=lambda x: x["score"], reverse=True)
                                 await manager.broadcast({"type": "CHANGE_STATE", "state": "result", "leaderboard": leaderboard, "correct_answer": manager.current_correct_answer})
                     else:
@@ -178,6 +180,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             p_state["has_answered"] = True
                             p_state["rank"] = 0
 
+                # 💡【新增】：把 last_answer 也打包進 leaderboard 廣播
                 leaderboard = [
                     {
                         "name": k,
@@ -185,7 +188,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "added_score": v.get("round_added_score", 0),
                         "time_taken": v.get("round_time_taken", 0),
                         "is_correct": v.get("is_correct", False),
-                        "rank": v.get("rank", -1)
+                        "rank": v.get("rank", -1),
+                        "last_answer": v.get("last_answer", "")
                     }
                     for k, v in manager.players_state.items()
                 ]

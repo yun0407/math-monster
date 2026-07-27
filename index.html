@@ -88,15 +88,15 @@
       const [myTimeTaken, setMyTimeTaken] = useState(0);
       const [amICorrect, setAmICorrect] = useState(false);
       const [myRank, setMyRank] = useState(-1);
-      const [myLastAnswer, setMyLastAnswer] = useState(''); // 新增：紀錄玩家最後答案判定逾時
+      const [myLastAnswer, setMyLastAnswer] = useState('');
 
       useEffect(() => { nicknameRef.current = nickname; }, [nickname]);
 
       useEffect(() => {
-        // 💡 智能判斷網址：本地開發連 localhost，Vercel 部署連 Render
+        // ⚠️ 請記得修改下方這行的 Render 網址
         const backendUrl = window.location.hostname === 'localhost'
           ? 'ws://localhost:8000/ws'
-          : 'wss://math-monster-backend.onrender.com/ws'; // ⚠️ 請將這裡換成你的實際 Render 網址！！
+          : 'wss://math-monster-backend.onrender.com/ws';
 
         const ws = new WebSocket(backendUrl);
         wsRef.current = ws;
@@ -113,7 +113,7 @@
 
           if (data.type === 'SCORES_RESET') {
             if (isPlayer) { setMyScore(0); setMyAddedScore(0); }
-            if (isHost) alert("所有玩家積分已成功歸零！");
+            if (isHost) alert("所有玩家積分與連線快取已成功清除！");
             setLeaderboardData(prev => prev.map(p => ({...p, score: 0, added_score: 0})));
             return;
           }
@@ -149,7 +149,7 @@
                   setMyTimeTaken(myData.time_taken);
                   setAmICorrect(myData.is_correct);
                   setMyRank(myData.rank);
-                  setMyLastAnswer(myData.last_answer); // 紀錄最後填答狀態
+                  setMyLastAnswer(myData.last_answer);
                 }
               }
             } else if (data.type === 'START_TIMER') {
@@ -194,7 +194,7 @@
       const hostChangeState = (state) => { safeSend({ type: 'CHANGE_STATE', state: state }); };
 
       const resetAllScores = () => {
-        if (window.confirm("⚠️ 警告：確定要清除所有玩家目前的積分嗎？此動作無法復原！")) {
+        if (window.confirm("⚠️ 警告：確定要清除所有玩家目前的積分，並踢除已斷線的玩家嗎？此動作無法復原！")) {
           safeSend({ type: 'RESET_SCORES' });
         }
       };
@@ -212,7 +212,7 @@
       const submitAnswerToBackend = (e) => {
         if(e) e.preventDefault();
         setIsSubmitted(true);
-        const finalAnswer = isBingoStage ? "BINGO!" : answer;
+        const finalAnswer = isBingoStage ? "BINGO!" : (answer.trim() || "未作答");
         safeSend({ type: 'SUBMIT_ANSWER', name: nickname, answer: finalAnswer });
       };
 
@@ -247,13 +247,29 @@
         setBingoLines(checkBingo(newGrid));
       };
 
-      // 💡 大螢幕動態佈局運算：確保人再多也能等比縮小塞滿一頁
+      // ==========================================
+      // 大螢幕輔助函數
+      // ==========================================
       const getDisplaySizing = (count) => {
-        if (count <= 4) return { gridCols: 'grid-cols-2', gap: 'gap-8', cardP: 'p-8', name: 'text-5xl mb-8', status: 'text-3xl px-8 py-3', badge: 'text-2xl px-6 py-2', scoreBox: 'mb-6', scoreTitle: 'text-2xl', scoreNum: 'text-5xl', resultText: 'text-3xl', resultScore: 'text-3xl', resultIcon: 'text-3xl' };
-        if (count <= 9) return { gridCols: 'grid-cols-3', gap: 'gap-4', cardP: 'p-4', name: 'text-3xl mb-4', status: 'text-xl px-4 py-2', badge: 'text-xl px-4 py-1', scoreBox: 'mb-4', scoreTitle: 'text-xl', scoreNum: 'text-3xl', resultText: 'text-xl', resultScore: 'text-xl', resultIcon: 'text-xl' };
-        if (count <= 16) return { gridCols: 'grid-cols-4', gap: 'gap-3', cardP: 'p-3', name: 'text-2xl mb-2', status: 'text-base px-3 py-1', badge: 'text-base px-3 py-1', scoreBox: 'mb-2', scoreTitle: 'text-base', scoreNum: 'text-2xl', resultText: 'text-base', resultScore: 'text-lg', resultIcon: 'text-lg' };
-        if (count <= 25) return { gridCols: 'grid-cols-5', gap: 'gap-2', cardP: 'p-2', name: 'text-xl mb-1', status: 'text-sm px-2 py-1', badge: 'text-sm px-2 py-1', scoreBox: 'mb-1', scoreTitle: 'text-sm', scoreNum: 'text-xl', resultText: 'text-sm', resultScore: 'text-base', resultIcon: 'text-base' };
-        return { gridCols: 'grid-cols-6', gap: 'gap-2', cardP: 'p-2', name: 'text-lg mb-1', status: 'text-xs px-2 py-1', badge: 'text-xs px-2 py-1', scoreBox: 'mb-1', scoreTitle: 'text-xs', scoreNum: 'text-lg', resultText: 'text-xs', resultScore: 'text-sm', resultIcon: 'text-sm' };
+        if (count <= 4) return { gridCols: 'grid-cols-2', gap: 'gap-6', cardP: 'p-6', name: 'text-3xl mb-4', status: 'text-2xl px-6 py-2', badge: 'text-xl px-4 py-1', scoreBox: 'mb-4', scoreTitle: 'text-lg', scoreNum: 'text-4xl', resultText: 'text-xl', resultScore: 'text-3xl', resultIcon: 'text-xl' };
+        if (count <= 9) return { gridCols: 'grid-cols-3', gap: 'gap-4', cardP: 'p-5', name: 'text-2xl mb-3', status: 'text-xl px-4 py-2', badge: 'text-lg px-3 py-1', scoreBox: 'mb-3', scoreTitle: 'text-base', scoreNum: 'text-3xl', resultText: 'text-lg', resultScore: 'text-2xl', resultIcon: 'text-lg' };
+        if (count <= 16) return { gridCols: 'grid-cols-4', gap: 'gap-3', cardP: 'p-4', name: 'text-xl mb-2', status: 'text-base px-3 py-1', badge: 'text-base px-3 py-1', scoreBox: 'mb-2', scoreTitle: 'text-sm', scoreNum: 'text-2xl', resultText: 'text-base', resultScore: 'text-xl', resultIcon: 'text-base' };
+        if (count <= 25) return { gridCols: 'grid-cols-5', gap: 'gap-2', cardP: 'p-3', name: 'text-lg mb-1', status: 'text-sm px-2 py-1', badge: 'text-sm px-2 py-1', scoreBox: 'mb-1', scoreTitle: 'text-xs', scoreNum: 'text-xl', resultText: 'text-sm', resultScore: 'text-lg', resultIcon: 'text-sm' };
+        return { gridCols: 'grid-cols-6', gap: 'gap-2', cardP: 'p-2', name: 'text-base mb-1', status: 'text-xs px-2 py-1', badge: 'text-xs px-2 py-1', scoreBox: 'mb-1', scoreTitle: 'text-[10px]', scoreNum: 'text-lg', resultText: 'text-[10px]', resultScore: 'text-sm', resultIcon: 'text-xs' };
+      };
+
+      const getBadgeColor = (index) => {
+        if (index === 0) return 'bg-yellow-400 text-black shadow-[0_0_10px_#facc15]';
+        if (index === 1) return 'bg-gray-300 text-black shadow-[0_0_10px_#d1d5db]';
+        if (index === 2) return 'bg-[#cd7f32] text-white shadow-[0_0_10px_#cd7f32]';
+        return 'bg-[#00FF41] text-black';
+      };
+
+      const getStageTitle = (state) => {
+        if (state === 'stage_1') return 'STAGE 01: SPEED_HUNT';
+        if (state === 'stage_2') return 'STAGE 02: 5x5 BINGO';
+        if (state === 'stage_4') return 'STAGE 03: DETECTIVE';
+        return '';
       };
 
       // ==========================================
@@ -265,7 +281,12 @@
             <MathCanvasBackground />
 
             <header className="relative z-10 flex justify-between items-center border-b-4 border-[#00FF41] pb-4 md:pb-6 mb-4 md:mb-8 bg-black/50 p-4 md:p-6 rounded-3xl shadow-[0_0_30px_rgba(0,255,65,0.2)] shrink-0">
-              <h1 className="text-3xl md:text-5xl font-bold text-[#00FF41] tracking-widest drop-shadow-[0_0_10px_#00FF41]">MATH_MONSTER LIVE</h1>
+              <h1 className="text-3xl md:text-5xl font-bold text-[#00FF41] tracking-widest drop-shadow-[0_0_10px_#00FF41] flex items-center gap-4">
+                <span>MATH_MONSTER LIVE</span>
+                {gameState.startsWith('stage_') && (
+                  <span className="text-xl md:text-3xl text-white bg-black/60 px-4 py-1 rounded-full border border-[#00FF41]/50">{getStageTitle(gameState)}</span>
+                )}
+              </h1>
               <div className="text-3xl md:text-5xl">
                 {gameState.startsWith('stage_') && !isBingoStage && (
                   <span className="text-red-500 font-bold animate-pulse drop-shadow-[0_0_10px_#ef4444]">⏱️ {timeLeft}s</span>
@@ -292,12 +313,23 @@
                 </div>
               )}
 
-              {/* 大螢幕動態作答牆 */}
               {gameState.startsWith('stage_') && (
                 <div className="w-full flex flex-col items-center h-full">
-                  <h2 className="text-2xl md:text-4xl text-white mb-6 bg-black/80 px-10 py-5 rounded-2xl border-2 border-[#00FF41]/50 text-center leading-relaxed shrink-0">
-                    {isBingoStage ? "STAGE 02: 5x5 BINGO" : currentQuestionData?.text}
-                  </h2>
+
+                  {/* 💡 包含選項的大螢幕問題顯示區 */}
+                  <div className="mb-6 bg-black/80 px-10 py-5 rounded-2xl border-2 border-[#00FF41]/50 text-center w-full max-w-4xl shrink-0 shadow-lg">
+                    <h2 className="text-2xl md:text-4xl text-white leading-relaxed font-bold">
+                      {isBingoStage ? "請聽主持人指示連滿 3 條線！" : currentQuestionData?.text}
+                    </h2>
+                    {/* 若題庫有提供 options 陣列，則渲染出來 */}
+                    {currentQuestionData?.options && !isBingoStage && (
+                      <div className="mt-5 flex flex-wrap justify-center gap-4">
+                        {currentQuestionData.options.map((opt, i) => (
+                          <span key={i} className="bg-black/60 border border-[#00FF41]/40 rounded-xl px-6 py-2 text-xl md:text-2xl text-[#00FF41]">{opt}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
                   {(() => {
                     const style = getDisplaySizing(hostPlayerDetails.length || 1);
@@ -317,7 +349,6 @@
                 </div>
               )}
 
-              {/* 大螢幕結算排行榜 */}
               {gameState === 'result' && (
                 <div className="w-full flex flex-col items-center h-full">
                   {correctAnswer && !isBingoStage && (
@@ -332,23 +363,23 @@
                     return (
                       <div className={`grid ${style.gridCols} ${style.gap} w-full flex-1 min-h-0`}>
                         {leaderboardData.map((p, i) => (
-                          <div key={i} className={`bg-black/80 ${style.cardP} rounded-2xl border-2 border-[#00FF41]/50 flex flex-col relative overflow-hidden shadow-xl justify-between`}>
-                            <div className={`absolute top-0 right-0 text-black font-bold rounded-bl-2xl ${style.badge} ${i === 0 ? 'bg-yellow-400' : 'bg-[#00FF41]'}`}>
+                          <div key={i} className={`bg-black/80 ${style.cardP} rounded-2xl border-2 border-[#00FF41]/50 flex flex-col relative shadow-xl justify-between`}>
+                            <div className={`absolute top-0 right-0 font-bold rounded-bl-2xl ${style.badge} ${getBadgeColor(i)}`}>
                               Top {i+1}
                             </div>
                             <div className={`text-white font-bold ${style.name}`}>{p.name}</div>
 
                             <div className={`flex justify-between items-center ${style.scoreBox}`}>
                               <span className={`text-gray-400 ${style.scoreTitle}`}>總積分</span>
-                              <span className={`text-yellow-400 font-bold ${style.scoreNum}`}>{p.score}</span>
+                              <span className={`text-orange-500 font-bold ${style.scoreNum}`}>{p.score}</span>
                             </div>
 
-                            <div className="border-t border-gray-600 pt-2 flex justify-between items-center">
+                            <div className="border-t border-gray-600 pt-3 flex justify-between items-center">
                               {isBingoStage ? (
                                 p.rank > 0 ? <span className={`text-green-400 font-bold ${style.resultText}`}>🎉 第 {p.rank} 名</span> : <span className={`text-gray-400 ${style.resultText}`}>未進榜</span>
                               ) : (
                                 p.is_correct ? <span className={`text-green-400 font-bold ${style.resultIcon}`}>✅ 正確</span> : (
-                                  p.last_answer === '未作答' ? <span className={`text-gray-400 font-bold ${style.resultIcon}`}>⏳ 未作答</span> : <span className={`text-red-500 font-bold ${style.resultIcon}`}>❌ 錯誤</span>
+                                  p.last_answer === '未作答' || p.last_answer === '' ? <span className={`text-gray-400 font-bold ${style.resultIcon}`}>⏳ 未作答</span> : <span className={`text-red-500 font-bold ${style.resultIcon}`}>❌ 錯誤</span>
                                 )
                               )}
                               <span className={`text-yellow-400 font-bold ${style.resultScore}`}>+{p.added_score}</span>
@@ -379,7 +410,7 @@
               <div className="flex gap-4 items-center">
                 <div className="bg-gray-800 px-4 py-2 rounded">連線: <span className="text-[#00FF41] font-bold">{players.length}</span></div>
                 <button onClick={resetAllScores} className="px-4 py-2 bg-red-900/50 hover:bg-red-700 border border-red-500 rounded text-red-100 transition shadow-[0_0_8px_rgba(239,68,68,0.5)]">
-                   清除所有積分
+                   清除快取與積分
                 </button>
               </div>
             </header>
@@ -456,12 +487,19 @@
                       <button onClick={() => hostStartStage('stage_2', '')} className="w-full bg-purple-700 hover:bg-purple-600 text-white p-2 rounded font-bold transition shadow-[0_0_10px_rgba(168,85,247,0.3)]">開始 Bingo</button>
                     </div>
 
+                    <div className="p-4 bg-gray-900 border border-gray-700 rounded-xl opacity-50 cursor-not-allowed">
+                      <div className="text-gray-400 mb-2 font-bold">第三關: 數學怪物 (維護中)</div>
+                      <button disabled className="w-full bg-gray-700 text-gray-500 p-2 rounded font-bold mt-10">暫時停用</button>
+                    </div>
+
                     <div className="p-4 bg-gray-900 border border-red-500/50 rounded-xl">
-                      <div className="text-red-400 mb-2 font-bold">第四關: 數學偵探</div>
+                      {/* 💡 已更名為 第三關 */}
+                      <div className="text-red-400 mb-2 font-bold">第三關: 數學偵探</div>
                       <select className="w-full bg-black text-white p-2 rounded mb-3 border border-gray-600" onChange={(e) => setSelectedQ({...selectedQ, stage_4: parseInt(e.target.value)})}>
                         {window.DB_STAGE_4?.map((q, i) => <option key={i} value={i}>謎題 {i+1} ({q.time}s)</option>)}
                       </select>
-                      <button onClick={() => hostStartStage('stage_4', 'DB_STAGE_4')} className="w-full bg-red-700 hover:bg-red-600 text-white p-2 rounded font-bold transition">發送偵探謎題</button>
+                      {/* 💡 按鈕改為 發送題目 */}
+                      <button onClick={() => hostStartStage('stage_4', 'DB_STAGE_4')} className="w-full bg-red-700 hover:bg-red-600 text-white p-2 rounded font-bold transition">發送題目</button>
                     </div>
                   </div>
                 </div>
@@ -487,9 +525,20 @@
           case 'stage_1':
             return (
               <form onSubmit={submitAnswerToBackend} className="my-auto space-y-5 w-full">
-                <div className="bg-[#00FF41]/5 p-8 rounded-2xl border-2 border-[#00FF41]/30 text-2xl md:text-4xl text-center shadow-inner relative">
-                  <div className="absolute top-2 left-3 text-xs text-[#00FF41]/30">STAGE_01: SPEED_HUNT</div>
-                  請在時間內找到：<br/><span className="text-white font-bold mt-4 inline-block">{currentQuestionData?.text}</span>
+                {/* 💡 重新設計的關卡標籤，更緊湊 */}
+                <div className="bg-[#00FF41]/5 p-6 rounded-2xl border-2 border-[#00FF41]/30 text-center shadow-inner flex flex-col items-center">
+                  <div className="inline-block bg-[#00FF41]/20 text-[#00FF41] border border-[#00FF41]/50 rounded-full px-4 py-1 text-xs md:text-sm mb-4 font-bold tracking-wider">
+                    STAGE_01: SPEED_HUNT
+                  </div>
+                  <span className="text-xl md:text-3xl text-white font-bold leading-relaxed">{currentQuestionData?.text}</span>
+                  {/* 💡 如果有選擇題 Options，在這裡渲染 */}
+                  {currentQuestionData?.options && (
+                    <div className="mt-6 flex flex-col gap-3 w-full max-w-md">
+                      {currentQuestionData.options.map((opt, i) => (
+                        <div key={i} className="bg-black/40 border border-[#00FF41]/30 rounded-lg p-3 text-left text-lg md:text-xl text-[#00FF41]">{opt}</div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <input type="text" value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="輸入你的答案..." className="w-full bg-black/50 border-2 border-[#00FF41] rounded-xl p-6 text-center text-3xl outline-none focus:bg-[#00FF41]/10" autoFocus />
                 <button type="submit" className="w-full bg-[#00FF41] text-black font-bold text-2xl p-6 rounded-xl active:scale-95 transition-all">送出</button>
@@ -499,10 +548,12 @@
           case 'stage_2':
             return (
               <div className="my-auto space-y-2 md:space-y-4 flex flex-col items-center w-full">
-                <div className="bg-[#00FF41]/5 p-3 w-full rounded-2xl border-2 border-[#00FF41]/30 text-lg md:text-xl text-center shadow-inner relative">
-                  <div className="absolute top-2 left-3 text-xs text-[#00FF41]/30">STAGE_02: 5x5 BINGO</div>
-                  <span className="text-yellow-400 font-bold">請聽主持人喊號碼圈選</span><br/>
-                  <span className="text-sm text-gray-400">(連滿 3 條線才能送出)</span>
+                <div className="bg-[#00FF41]/5 p-4 w-full rounded-2xl border-2 border-[#00FF41]/30 text-lg md:text-xl text-center shadow-inner flex flex-col items-center">
+                  <div className="inline-block bg-[#00FF41]/20 text-[#00FF41] border border-[#00FF41]/50 rounded-full px-4 py-1 text-xs md:text-sm mb-2 font-bold tracking-wider">
+                    STAGE_02: 5x5 BINGO
+                  </div>
+                  <span className="text-yellow-400 font-bold">請聽主持人喊號碼圈選</span>
+                  <span className="text-sm text-gray-400 mt-1">(連滿 3 條線才能送出)</span>
                 </div>
 
                 <div className="grid grid-cols-5 gap-1 md:gap-2 w-full max-w-[380px]">
@@ -528,10 +579,12 @@
           case 'stage_4':
             return (
               <form onSubmit={submitAnswerToBackend} className="my-auto space-y-5 w-full">
-                <div className="bg-[#00FF41]/5 p-8 rounded-2xl border-2 border-[#00FF41]/30 text-2xl md:text-4xl text-center shadow-inner relative">
-                  <div className="absolute top-2 left-3 text-xs text-[#00FF41]/30">STAGE_04: DETECTIVE</div>
+                <div className="bg-[#00FF41]/5 p-6 rounded-2xl border-2 border-[#00FF41]/30 text-center shadow-inner flex flex-col items-center">
+                  <div className="inline-block bg-[#00FF41]/20 text-[#00FF41] border border-[#00FF41]/50 rounded-full px-4 py-1 text-xs md:text-sm mb-4 font-bold tracking-wider">
+                    STAGE_03: DETECTIVE
+                  </div>
                   解析以下加密序列：<br/>
-                  <div className="text-yellow-400 font-bold mt-4 tracking-widest drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]">{currentQuestionData?.text}</div>
+                  <div className="text-yellow-400 text-2xl md:text-4xl font-bold mt-2 tracking-widest drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]">{currentQuestionData?.text}</div>
                 </div>
                 <input type="text" value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="輸入破解數字..." className="w-full bg-black/50 border-2 border-[#00FF41] rounded-xl p-6 text-center text-3xl outline-none focus:bg-[#00FF41]/10" />
                 <button type="submit" className="w-full bg-[#00FF41] text-black font-bold text-2xl p-6 rounded-xl active:scale-95">送出</button>
@@ -548,16 +601,18 @@
         <div className="min-h-[100dvh] w-full bg-[#0A0A0A] text-[#00FF41] font-mono relative overflow-hidden flex items-center justify-center p-2 md:p-4">
           <MathCanvasBackground />
           <div className="relative z-10 w-full max-w-[430px] md:max-w-3xl lg:max-w-4xl h-[95dvh] md:h-[85vh] bg-black/85 md:border md:border-[#00FF41]/30 md:rounded-2xl flex flex-col shadow-[0_0_40px_rgba(0,255,65,0.15)] backdrop-blur-[2px]">
+
+            {/* 💡 頂部 Navbar - 手機優化：字體調小，去除名字寬度限制 */}
             <div className="flex items-center justify-between p-4 border-b border-[#00FF41]/30 bg-black/50 md:rounded-t-2xl relative z-20 shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="font-bold tracking-widest text-lg md:text-2xl drop-shadow-[0_0_5px_#00FF41]">&gt;_ MATH_MONSTER</span>
-                <div className={`w-3 h-3 rounded-full ml-2 ${isConnected ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-red-500 shadow-[0_0_8px_#ef4444] animate-pulse'}`} title={isConnected ? '已連線' : '斷線'}></div>
+              <div className="flex items-center gap-1 md:gap-2">
+                <span className="font-bold tracking-widest text-sm md:text-2xl drop-shadow-[0_0_5px_#00FF41]">&gt;_MATH_MONSTER</span>
+                <div className={`w-2 h-2 md:w-3 md:h-3 rounded-full ml-1 md:ml-2 ${isConnected ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-red-500 shadow-[0_0_8px_#ef4444] animate-pulse'}`} title={isConnected ? '已連線' : '斷線'}></div>
               </div>
               {gameState !== 'login' && (
-                <div className="flex gap-4 items-center bg-black/50 px-3 py-1 rounded-full border border-[#00FF41]/20">
-                  <span className="text-[#00FF41]/90 max-w-[100px] truncate">{nickname}</span>
+                <div className="flex gap-3 md:gap-4 items-center bg-black/50 px-3 py-1 rounded-full border border-[#00FF41]/20 shrink-0">
+                  <span className="text-[#00FF41]/90 text-sm md:text-base">{nickname}</span>
                   <div className="h-4 w-[1px] bg-[#00FF41]/20"></div>
-                  <span className="text-yellow-400 font-bold">🏆 {myScore}</span>
+                  <span className="text-yellow-400 font-bold text-sm md:text-base">🏆 {myScore}</span>
                 </div>
               )}
             </div>
@@ -633,7 +688,7 @@
                           </p>
                         </div>
                       ) : (
-                        myLastAnswer === '未作答' ? (
+                        myLastAnswer === '未作答' || myLastAnswer === '' ? (
                           <p className="text-3xl text-gray-400 font-bold py-4">⏳ 逾時未作答</p>
                         ) : (
                           <p className="text-3xl text-red-500 font-bold py-4">❌ 答案錯誤</p>
@@ -642,7 +697,7 @@
                     )}
 
                     <div className="h-px w-full bg-[#00FF41]/20 my-2"></div>
-                    <p className="text-lg md:text-xl text-white mb-2">🏆 你的總積分：<span className="text-3xl font-bold text-yellow-400">{myScore}</span></p>
+                    <p className="text-lg md:text-xl text-white mb-2">🏆 你的總積分：<span className="text-3xl font-bold text-orange-500">{myScore}</span></p>
 
                     <div className="mt-4 text-left">
                        <p className="text-[#00FF41]/80 text-sm mb-2 border-b border-[#00FF41]/30 pb-1">全班排行榜 (Top 5)</p>

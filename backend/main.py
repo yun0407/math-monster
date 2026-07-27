@@ -115,7 +115,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif action_type == "SUBMIT_ANSWER":
                 name = message.get("name")
+                # 💡【修正】：處理空白與未作答
                 player_answer = str(message.get("answer", "")).strip().lower()
+                if not player_answer:
+                    player_answer = "未作答"
 
                 if name in manager.players_state and not manager.players_state[name].get("has_answered"):
                     manager.players_state[name]["last_answer"] = player_answer
@@ -147,7 +150,6 @@ async def websocket_endpoint(websocket: WebSocket):
                                         p_state["has_answered"] = True
                                         p_state["rank"] = 0
 
-                                # 💡【新增】：把 last_answer 也打包進 leaderboard 廣播
                                 leaderboard = [{"name": k, "score": v["score"], "added_score": v.get("round_added_score", 0), "time_taken": v.get("round_time_taken", 0), "is_correct": v.get("is_correct", False), "rank": v.get("rank", -1), "last_answer": v.get("last_answer", "")} for k, v in manager.players_state.items()]
                                 leaderboard = sorted(leaderboard, key=lambda x: x["score"], reverse=True)
                                 await manager.broadcast({"type": "CHANGE_STATE", "state": "result", "leaderboard": leaderboard, "correct_answer": manager.current_correct_answer})
@@ -180,7 +182,6 @@ async def websocket_endpoint(websocket: WebSocket):
                             p_state["has_answered"] = True
                             p_state["rank"] = 0
 
-                # 💡【新增】：把 last_answer 也打包進 leaderboard 廣播
                 leaderboard = [
                     {
                         "name": k,
@@ -207,6 +208,15 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif action_type == "RESET_SCORES":
                 manager.bingo_winners = []
+
+                # 💡【修正】：找出誰還在線，不在線的幽靈人口直接刪除
+                active_names = list(manager.active_connections.values())
+                keys_to_delete = [name for name in manager.players_state.keys() if name not in active_names]
+
+                for k in keys_to_delete:
+                    del manager.players_state[k]
+
+                # 剩下的活人分數歸零
                 for p in manager.players_state.values():
                     p["score"] = 0
                     p["round_added_score"] = 0

@@ -94,7 +94,7 @@
       useEffect(() => { nicknameRef.current = nickname; }, [nickname]);
 
       useEffect(() => {
-        // ⚠️ 請確保上線時，這裡的網址已改為你的 Render 專案網址
+        // ⚠️ 請確保這裡為你的 Render 專案網址
         const backendUrl = window.location.hostname === 'localhost'
           ? 'ws://localhost:8000/ws'
           : 'wss://math-monster-backend.onrender.com/ws';
@@ -123,7 +123,6 @@
             if (data.type === 'UPDATE_PLAYERS') setPlayers(data.players);
             if (data.type === 'HOST_UPDATE') setHostPlayerDetails(data.player_details);
             if (data.type === 'CHANGE_STATE') {
-              // 💡 收到系統切換畫面時，強制清除倒數計時器
               if (window.gameTimer) clearInterval(window.gameTimer);
               setGameState(data.state);
               if (data.state === 'result' && data.leaderboard) {
@@ -141,7 +140,6 @@
 
           if (isPlayer) {
             if (data.type === 'CHANGE_STATE') {
-              // 💡 收到系統切換畫面時，強制清除倒數計時器
               if (window.gameTimer) clearInterval(window.gameTimer);
               setGameState(data.state);
               if (data.state === 'login') { setNickname(''); }
@@ -253,7 +251,10 @@
         const newGrid = [...bingoGrid];
         newGrid[index].selected = !newGrid[index].selected;
         setBingoGrid(newGrid);
-        setBingoLines(checkBingo(newGrid));
+
+        const newLines = checkBingo(newGrid);
+        setBingoLines(newLines);
+        safeSend({ type: 'UPDATE_BINGO_LINES', name: nicknameRef.current, lines: newLines });
       };
 
       // ==========================================
@@ -274,10 +275,11 @@
         return 'bg-[#00FF41] text-black';
       };
 
+      // 💡 更新關卡名稱為白發光字體
       const getStageTitle = (state) => {
-        if (state === 'stage_1') return 'STAGE 01: SPEED_HUNT';
+        if (state === 'stage_1') return 'STAGE 01: MATH_HUNTER';
         if (state === 'stage_2') return 'STAGE 02: 5x5 BINGO';
-        if (state === 'stage_4') return 'STAGE 03: DETECTIVE';
+        if (state === 'stage_4') return 'STAGE 03: SEQUENCE_MASTER';
         return '';
       };
 
@@ -289,19 +291,20 @@
           <div className="h-screen bg-[#0A0A0A] text-white p-6 md:p-8 font-mono flex flex-col relative overflow-hidden">
             <MathCanvasBackground />
 
-            <header className="relative z-10 flex justify-between items-center border-b-4 border-[#00FF41] pb-4 md:pb-6 mb-4 md:mb-8 bg-black/50 p-4 md:p-6 rounded-3xl shadow-[0_0_30px_rgba(0,255,65,0.2)] shrink-0">
-              <h1 className="text-3xl md:text-5xl font-bold text-[#00FF41] tracking-widest drop-shadow-[0_0_10px_#00FF41] flex items-center gap-4">
-                <span>MATH_MONSTER LIVE</span>
+            <header className="relative z-10 flex flex-col xl:flex-row justify-between items-center text-center xl:text-left border-b-4 border-[#00FF41] pb-4 md:pb-6 mb-4 md:mb-8 bg-black/50 p-4 md:p-6 rounded-3xl shadow-[0_0_30px_rgba(0,255,65,0.2)] shrink-0 gap-4">
+              <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-[#00FF41] tracking-widest drop-shadow-[0_0_10px_#00FF41] flex flex-col md:flex-row items-center justify-center gap-3 md:gap-5">
+                <span className="whitespace-nowrap">MATH_MONSTER LIVE</span>
                 {gameState.startsWith('stage_') && (
-                  <span className="text-xl md:text-3xl text-white bg-black/60 px-4 py-1 rounded-full border border-[#00FF41]/50">{getStageTitle(gameState)}</span>
+                  // 💡 螢幕頂部的關卡名稱：白發光樣式
+                  <span className="text-base md:text-2xl lg:text-3xl text-white bg-black/60 px-5 md:px-6 py-2 rounded-xl border-2 border-white/50 whitespace-nowrap shadow-[0_0_15px_rgba(255,255,255,0.3)] font-bold tracking-widest">{getStageTitle(gameState)}</span>
                 )}
               </h1>
-              <div className="text-3xl md:text-5xl">
+              <div className="text-2xl md:text-4xl lg:text-5xl whitespace-nowrap">
                 {gameState.startsWith('stage_') && !isBingoStage && (
                   <span className="text-red-500 font-bold animate-pulse drop-shadow-[0_0_10px_#ef4444]">⏱️ {timeLeft}s</span>
                 )}
                 {isBingoStage && gameState.startsWith('stage_') && (
-                  <span className="text-purple-400 font-bold drop-shadow-[0_0_10px_#a855f7]">🎲 BINGO 進行中</span>
+                  <span className="text-xl md:text-3xl lg:text-4xl text-blue-400 font-bold drop-shadow-[0_0_8px_#60a5fa] whitespace-nowrap">🎲 BINGO 進行中</span>
                 )}
               </div>
             </header>
@@ -345,8 +348,13 @@
                         {hostPlayerDetails.map((p, i) => (
                           <div key={i} className={`flex flex-col items-center justify-center ${style.cardP} rounded-2xl border-4 transition-all duration-300 transform ${p.has_answered ? 'border-[#00FF41] bg-[#00FF41]/20 shadow-[0_0_30px_rgba(0,255,65,0.5)] scale-105' : 'border-yellow-500 bg-yellow-500/10'}`}>
                             <span className={`text-white font-bold ${style.name}`}>{p.name}</span>
-                            <span className={`font-bold rounded-full tracking-widest ${style.status} ${p.has_answered ? 'bg-[#00FF41] text-black' : 'bg-yellow-500 text-black animate-pulse'}`}>
-                              {p.has_answered ? (isBingoStage ? 'BINGO!' : '已送出') : '作答中...'}
+
+                            <span className={`font-bold rounded-full tracking-widest ${style.status}
+                              ${p.has_answered ? 'bg-[#00FF41] text-black' :
+                               (isBingoStage && p.bingo_lines > 0 ? 'bg-orange-500 text-white shadow-[0_0_15px_#f6b26b]' : 'bg-yellow-500 text-black animate-pulse')}`}>
+                              {p.has_answered
+                                ? (isBingoStage ? 'BINGO!' : '已送出')
+                                : (isBingoStage ? (p.bingo_lines > 0 ? `✨ 已連線 ${p.bingo_lines} 條` : '⏳ 等待圈選...') : '作答中...')}
                             </span>
                           </div>
                         ))}
@@ -461,10 +469,16 @@
                             </div>
                             <div className="text-sm text-yellow-400 font-bold">{p.score} 分</div>
                           </div>
-                          {p.has_answered && (
+                          {p.has_answered ? (
                             <div className="text-xs text-gray-400 mt-1 pt-1 border-t border-gray-700 flex justify-between">
                               <span>當前答案: <span className="text-white text-sm">{p.last_answer}</span></span>
                             </div>
+                          ) : (
+                            isBingoStage && p.bingo_lines > 0 && (
+                              <div className="text-xs text-orange-400 mt-1 pt-1 border-t border-gray-700 font-bold">
+                                🎲 目前連線: {p.bingo_lines} 條
+                              </div>
+                            )
                           )}
                         </div>
                       ))}
@@ -486,7 +500,8 @@
                   <h2 className="text-xl mb-4 border-b border-gray-600 pb-2">題庫發送區</h2>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 bg-gray-900 border border-[#00FF41]/50 rounded-xl">
-                      <div className="text-[#00FF41] mb-2 font-bold">第一關: 數字獵人</div>
+                      {/* 💡 主持人面板關卡名稱統一 */}
+                      <div className="text-[#00FF41] mb-2 font-bold">第一關: Math_Hunter</div>
                       <select className="w-full bg-black text-white p-2 rounded mb-3 border border-gray-600" onChange={(e) => setSelectedQ({...selectedQ, stage_1: parseInt(e.target.value)})}>
                         {window.DB_STAGE_1?.map((q, i) => <option key={i} value={i}>第 {i+1} 題 ({q.time}s)</option>)}
                       </select>
@@ -505,7 +520,7 @@
                     </div>
 
                     <div className="p-4 bg-gray-900 border border-red-500/50 rounded-xl">
-                      <div className="text-red-400 mb-2 font-bold">第三關: 數學偵探</div>
+                      <div className="text-red-400 mb-2 font-bold">第三關: SEQUENCE_MASTER</div>
                       <select className="w-full bg-black text-white p-2 rounded mb-3 border border-gray-600" onChange={(e) => setSelectedQ({...selectedQ, stage_4: parseInt(e.target.value)})}>
                         {window.DB_STAGE_4?.map((q, i) => <option key={i} value={i}>謎題 {i+1} ({q.time}s)</option>)}
                       </select>
@@ -535,9 +550,10 @@
           case 'stage_1':
             return (
               <form onSubmit={submitAnswerToBackend} className="my-auto space-y-5 w-full">
+                {/* 💡 玩家畫面的白發光關卡名稱 */}
                 <div className="bg-[#00FF41]/5 p-6 rounded-2xl border-2 border-[#00FF41]/30 text-center shadow-inner flex flex-col items-center">
-                  <div className="inline-block bg-[#00FF41]/20 text-[#00FF41] border border-[#00FF41]/50 rounded-full px-4 py-1 text-xs md:text-sm mb-4 font-bold tracking-wider">
-                    STAGE_01: SPEED_HUNT
+                  <div className="bg-black/60 border border-white/50 rounded-lg px-6 py-2 text-sm md:text-base mb-5 font-bold tracking-widest shadow-[0_0_15px_rgba(255,255,255,0.3)] text-white">
+                    STAGE_01: MATH_HUNTER
                   </div>
                   <span className="text-xl md:text-3xl text-white font-bold leading-relaxed">{currentQuestionData?.text}</span>
                   {currentQuestionData?.options && (
@@ -557,7 +573,7 @@
             return (
               <div className="my-auto space-y-2 md:space-y-4 flex flex-col items-center w-full">
                 <div className="bg-[#00FF41]/5 p-4 w-full rounded-2xl border-2 border-[#00FF41]/30 text-lg md:text-xl text-center shadow-inner flex flex-col items-center">
-                  <div className="inline-block bg-[#00FF41]/20 text-[#00FF41] border border-[#00FF41]/50 rounded-full px-4 py-1 text-xs md:text-sm mb-2 font-bold tracking-wider">
+                  <div className="bg-black/60 border border-white/50 rounded-lg px-6 py-2 text-sm md:text-base mb-3 font-bold tracking-widest shadow-[0_0_15px_rgba(255,255,255,0.3)] text-white">
                     STAGE_02: 5x5 BINGO
                   </div>
                   <span className="text-yellow-400 font-bold">請聽主持人喊號碼圈選</span>
@@ -579,7 +595,7 @@
                 <button onClick={submitAnswerToBackend} disabled={bingoLines < 3 || isSubmitted}
                   className={`w-full font-bold text-xl md:text-2xl p-4 rounded-xl mt-2 transition-all
                   ${isSubmitted ? 'bg-gray-600 text-gray-300 border border-gray-700' : bingoLines >= 3 ? 'bg-[#00FF41] text-black active:scale-95 animate-pulse' : 'bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed'}`}>
-                  {isSubmitted ? '已成功宣告！等待結算...' : bingoLines >= 3 ? '宣佈連線 (BINGO!)' : '未達 3 條連線'}
+                  {isSubmitted ? '已成功賓果！等待結算...' : bingoLines >= 3 ? '宣佈連線 (BINGO!)' : '未達 3 條連線'}
                 </button>
               </div>
             );
@@ -588,8 +604,8 @@
             return (
               <form onSubmit={submitAnswerToBackend} className="my-auto space-y-5 w-full">
                 <div className="bg-[#00FF41]/5 p-6 rounded-2xl border-2 border-[#00FF41]/30 text-center shadow-inner flex flex-col items-center">
-                  <div className="inline-block bg-[#00FF41]/20 text-[#00FF41] border border-[#00FF41]/50 rounded-full px-4 py-1 text-xs md:text-sm mb-4 font-bold tracking-wider">
-                    STAGE_03: DETECTIVE
+                  <div className="bg-black/60 border border-white/50 rounded-lg px-6 py-2 text-sm md:text-base mb-5 font-bold tracking-widest shadow-[0_0_15px_rgba(255,255,255,0.3)] text-white">
+                    STAGE_03: SEQUENCE_MASTER
                   </div>
                   <span className="text-white leading-relaxed">解析以下加密序列：</span><br/>
                   <div className="text-yellow-400 text-2xl md:text-4xl font-bold mt-2 tracking-widest drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]">{currentQuestionData?.text}</div>
@@ -676,7 +692,6 @@
                       <div className="mb-2">
                         <p className="text-[#00FF41]/80 text-lg">本題正確答案：</p>
                         <p className="text-3xl text-white font-bold tracking-widest">{correctAnswer}</p>
-                        {/* 💡 顯示解答說明 */}
                         {explanation && (
                           <div className="mt-4 bg-[#00FF41]/10 border border-[#00FF41]/30 rounded-xl p-3 inline-block text-left">
                             <p className="text-[#00FF41] text-sm md:text-base">💡 說明：{explanation}</p>

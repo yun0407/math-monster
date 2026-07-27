@@ -4,6 +4,7 @@ import json
 import random
 import time
 import traceback
+import unicodedata
 
 app = FastAPI(title="Math Monster Backend")
 
@@ -22,6 +23,7 @@ class ConnectionManager:
         self.stage_start_time = 0
         self.current_time_limit = 0
         self.current_correct_answer = ""
+        self.current_explanation = ""
         self.current_stage = ""
         self.bingo_winners = []
 
@@ -91,7 +93,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif action_type == "START_TIMER":
                 stage = message.get("stage")
-                print(f"🚀 [發送關卡] 主持人發送了: {stage}")
                 question_data = message.get("questionData", {})
 
                 manager.current_stage = stage
@@ -99,8 +100,13 @@ async def websocket_endpoint(websocket: WebSocket):
                 manager.current_time_limit = message.get("time", 30)
                 manager.bingo_winners = []
 
+                manager.current_explanation = question_data.get("explanation", "")
+
                 raw_ans = question_data.get("answer", "")
-                manager.current_correct_answer = str(raw_ans).strip().lower() if raw_ans else ""
+                if raw_ans:
+                    manager.current_correct_answer = unicodedata.normalize('NFKC', str(raw_ans)).strip().lower()
+                else:
+                    manager.current_correct_answer = ""
 
                 for p in manager.players_state.values():
                     p["round_added_score"] = 0
@@ -115,13 +121,15 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif action_type == "SUBMIT_ANSWER":
                 name = message.get("name")
-                # 💡【修正】：處理空白與未作答
-                player_answer = str(message.get("answer", "")).strip().lower()
+
+                raw_player_answer = str(message.get("answer", ""))
+                player_answer = unicodedata.normalize('NFKC', raw_player_answer).strip().lower()
+
                 if not player_answer:
                     player_answer = "未作答"
 
                 if name in manager.players_state and not manager.players_state[name].get("has_answered"):
-                    manager.players_state[name]["last_answer"] = player_answer
+                    manager.players_state[name]["last_answer"] = raw_player_answer.strip() if raw_player_answer.strip() else "未作答"
 
                     if manager.current_stage == "stage_2":
                         if name not in manager.bingo_winners:
@@ -139,10 +147,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             manager.players_state[name]["has_answered"] = True
                             manager.players_state[name]["rank"] = rank
                             manager.players_state[name]["is_correct"] = True
-                            print(f"🎯 [BINGO] {name} 第 {rank} 名, 獲得 {points} 分")
 
                             if len(manager.bingo_winners) >= 4:
-                                print("🔔 [BINGO] 已滿 4 人，自動強制結算")
                                 for p_name, p_state in manager.players_state.items():
                                     if not p_state.get("has_answered"):
                                         p_state["round_added_score"] = 3
@@ -152,7 +158,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
                                 leaderboard = [{"name": k, "score": v["score"], "added_score": v.get("round_added_score", 0), "time_taken": v.get("round_time_taken", 0), "is_correct": v.get("is_correct", False), "rank": v.get("rank", -1), "last_answer": v.get("last_answer", "")} for k, v in manager.players_state.items()]
                                 leaderboard = sorted(leaderboard, key=lambda x: x["score"], reverse=True)
-                                await manager.broadcast({"type": "CHANGE_STATE", "state": "result", "leaderboard": leaderboard, "correct_answer": manager.current_correct_answer})
+                                await manager.broadcast({
+                                    "type": "CHANGE_STATE",
+                                    "state": "result",
+                                    "leaderboard": leaderboard,
+                                    "correct_answer": manager.current_correct_answer,
+                                    "explanation": manager.current_explanation
+                                })
                     else:
                         time_taken = time.time() - manager.stage_start_time
                         remaining = max(0, manager.current_time_limit - time_taken)
@@ -172,6 +184,38 @@ async def websocket_endpoint(websocket: WebSocket):
                         manager.players_state[name]["is_correct"] = is_correct
 
                     await manager.broadcast_host_update()
+
+                    # 💡【新增】：如果不是 Bingo 關卡，檢查是否所有在線玩家都已作答完畢
+                    if manager.current_stage != "stage_2":
+                        # 取出目前真實連線的玩家名單
+                        active_player_names = [n for n in manager.active_connections.values() if n and n not in ["HOST", "DISPLAY"]]
+                        if active_player_names: # 至少要有一名玩家
+                            # 檢查所有在線玩家是否 has_answered == True
+                            all_answered = all(manager.players_state.get(p, {}).get("has_answered", False) for p in active_player_names)
+
+                            if all_answered:
+                                print("🔔 [系統] 所有玩家皆已作答，自動提早結算！")
+                                leaderboard = [
+                                    {
+                                        "name": k,
+                                        "score": v["score"],
+                                        "added_score": v.get("round_added_score", 0),
+                                        "time_taken": v.get("round_time_taken", 0),
+                                        "is_correct": v.get("is_correct", False),
+                                        "rank": v.get("rank", -1),
+                                        "last_answer": v.get("last_answer", "")
+                                    }
+                                    for k, v in manager.players_state.items()
+                                ]
+                                leaderboard = sorted(leaderboard, key=lambda x: x["score"], reverse=True)
+
+                                await manager.broadcast({
+                                    "type": "CHANGE_STATE",
+                                    "state": "result",
+                                    "leaderboard": leaderboard,
+                                    "correct_answer": manager.current_correct_answer,
+                                    "explanation": manager.current_explanation
+                                })
 
             elif action_type == "CHANGE_STATE" and message.get("state") == "result":
                 if manager.current_stage == "stage_2":
@@ -200,7 +244,8 @@ async def websocket_endpoint(websocket: WebSocket):
                     "type": "CHANGE_STATE",
                     "state": "result",
                     "leaderboard": leaderboard,
-                    "correct_answer": manager.current_correct_answer
+                    "correct_answer": manager.current_correct_answer,
+                    "explanation": manager.current_explanation
                 })
 
             elif action_type == "CHANGE_STATE":
@@ -209,14 +254,12 @@ async def websocket_endpoint(websocket: WebSocket):
             elif action_type == "RESET_SCORES":
                 manager.bingo_winners = []
 
-                # 💡【修正】：找出誰還在線，不在線的幽靈人口直接刪除
                 active_names = list(manager.active_connections.values())
                 keys_to_delete = [name for name in manager.players_state.keys() if name not in active_names]
 
                 for k in keys_to_delete:
                     del manager.players_state[k]
 
-                # 剩下的活人分數歸零
                 for p in manager.players_state.values():
                     p["score"] = 0
                     p["round_added_score"] = 0

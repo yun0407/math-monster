@@ -73,6 +73,7 @@
 
       const [leaderboardData, setLeaderboardData] = useState([]);
       const [correctAnswer, setCorrectAnswer] = useState('');
+      const [explanation, setExplanation] = useState('');
 
       const [nickname, setNickname] = useState('');
       const nicknameRef = useRef(nickname);
@@ -93,7 +94,7 @@
       useEffect(() => { nicknameRef.current = nickname; }, [nickname]);
 
       useEffect(() => {
-        // ⚠️ 請記得修改下方這行的 Render 網址
+        // ⚠️ 請確保上線時，這裡的網址已改為你的 Render 專案網址
         const backendUrl = window.location.hostname === 'localhost'
           ? 'ws://localhost:8000/ws'
           : 'wss://math-monster-backend.onrender.com/ws';
@@ -122,10 +123,13 @@
             if (data.type === 'UPDATE_PLAYERS') setPlayers(data.players);
             if (data.type === 'HOST_UPDATE') setHostPlayerDetails(data.player_details);
             if (data.type === 'CHANGE_STATE') {
+              // 💡 收到系統切換畫面時，強制清除倒數計時器
+              if (window.gameTimer) clearInterval(window.gameTimer);
               setGameState(data.state);
               if (data.state === 'result' && data.leaderboard) {
                   setLeaderboardData(data.leaderboard);
                   setCorrectAnswer(data.correct_answer);
+                  setExplanation(data.explanation || '');
               }
             }
             if (data.type === 'START_TIMER') {
@@ -137,11 +141,15 @@
 
           if (isPlayer) {
             if (data.type === 'CHANGE_STATE') {
+              // 💡 收到系統切換畫面時，強制清除倒數計時器
+              if (window.gameTimer) clearInterval(window.gameTimer);
               setGameState(data.state);
               if (data.state === 'login') { setNickname(''); }
               if (data.state === 'result' && data.leaderboard) {
                 setLeaderboardData(data.leaderboard);
                 setCorrectAnswer(data.correct_answer);
+                setExplanation(data.explanation || '');
+
                 const myData = data.leaderboard.find(p => p.name === nicknameRef.current);
                 if (myData) {
                   setMyScore(myData.score);
@@ -173,6 +181,7 @@
 
       const startLocalTimer = (seconds, stage) => {
         setTimeLeft(seconds); setIsSubmitted(false); setAnswer('');
+        setExplanation('');
         setGameState(stage);
 
         if (window.gameTimer) clearInterval(window.gameTimer);
@@ -316,12 +325,10 @@
               {gameState.startsWith('stage_') && (
                 <div className="w-full flex flex-col items-center h-full">
 
-                  {/* 💡 包含選項的大螢幕問題顯示區 */}
                   <div className="mb-6 bg-black/80 px-10 py-5 rounded-2xl border-2 border-[#00FF41]/50 text-center w-full max-w-4xl shrink-0 shadow-lg">
                     <h2 className="text-2xl md:text-4xl text-white leading-relaxed font-bold">
                       {isBingoStage ? "請聽主持人指示連滿 3 條線！" : currentQuestionData?.text}
                     </h2>
-                    {/* 若題庫有提供 options 陣列，則渲染出來 */}
                     {currentQuestionData?.options && !isBingoStage && (
                       <div className="mt-5 flex flex-wrap justify-center gap-4">
                         {currentQuestionData.options.map((opt, i) => (
@@ -352,9 +359,14 @@
               {gameState === 'result' && (
                 <div className="w-full flex flex-col items-center h-full">
                   {correctAnswer && !isBingoStage && (
-                    <div className="mb-6 text-center bg-black/80 px-16 py-4 rounded-3xl border-4 border-white shadow-[0_0_20px_rgba(255,255,255,0.3)] shrink-0">
+                    <div className="mb-6 text-center bg-black/80 px-10 py-4 rounded-3xl border-4 border-white shadow-[0_0_20px_rgba(255,255,255,0.3)] shrink-0 max-w-4xl w-full">
                       <p className="text-gray-300 text-xl md:text-2xl mb-1">正確答案</p>
                       <p className="text-4xl md:text-6xl text-white font-bold tracking-widest drop-shadow-[0_0_15px_#ffffff]">{correctAnswer}</p>
+                      {explanation && (
+                        <div className="mt-4 bg-[#00FF41]/10 border border-[#00FF41]/30 rounded-xl p-3 inline-block">
+                          <p className="text-[#00FF41] text-lg md:text-xl">💡 說明：{explanation}</p>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -488,17 +500,15 @@
                     </div>
 
                     <div className="p-4 bg-gray-900 border border-gray-700 rounded-xl opacity-50 cursor-not-allowed">
-                      <div className="text-gray-400 mb-2 font-bold">第三關: 數學怪物 (維護中)</div>
+                      <div className="text-gray-400 mb-2 font-bold">維護中功能</div>
                       <button disabled className="w-full bg-gray-700 text-gray-500 p-2 rounded font-bold mt-10">暫時停用</button>
                     </div>
 
                     <div className="p-4 bg-gray-900 border border-red-500/50 rounded-xl">
-                      {/* 💡 已更名為 第三關 */}
                       <div className="text-red-400 mb-2 font-bold">第三關: 數學偵探</div>
                       <select className="w-full bg-black text-white p-2 rounded mb-3 border border-gray-600" onChange={(e) => setSelectedQ({...selectedQ, stage_4: parseInt(e.target.value)})}>
                         {window.DB_STAGE_4?.map((q, i) => <option key={i} value={i}>謎題 {i+1} ({q.time}s)</option>)}
                       </select>
-                      {/* 💡 按鈕改為 發送題目 */}
                       <button onClick={() => hostStartStage('stage_4', 'DB_STAGE_4')} className="w-full bg-red-700 hover:bg-red-600 text-white p-2 rounded font-bold transition">發送題目</button>
                     </div>
                   </div>
@@ -525,13 +535,11 @@
           case 'stage_1':
             return (
               <form onSubmit={submitAnswerToBackend} className="my-auto space-y-5 w-full">
-                {/* 💡 重新設計的關卡標籤，更緊湊 */}
                 <div className="bg-[#00FF41]/5 p-6 rounded-2xl border-2 border-[#00FF41]/30 text-center shadow-inner flex flex-col items-center">
                   <div className="inline-block bg-[#00FF41]/20 text-[#00FF41] border border-[#00FF41]/50 rounded-full px-4 py-1 text-xs md:text-sm mb-4 font-bold tracking-wider">
                     STAGE_01: SPEED_HUNT
                   </div>
                   <span className="text-xl md:text-3xl text-white font-bold leading-relaxed">{currentQuestionData?.text}</span>
-                  {/* 💡 如果有選擇題 Options，在這裡渲染 */}
                   {currentQuestionData?.options && (
                     <div className="mt-6 flex flex-col gap-3 w-full max-w-md">
                       {currentQuestionData.options.map((opt, i) => (
@@ -583,8 +591,15 @@
                   <div className="inline-block bg-[#00FF41]/20 text-[#00FF41] border border-[#00FF41]/50 rounded-full px-4 py-1 text-xs md:text-sm mb-4 font-bold tracking-wider">
                     STAGE_03: DETECTIVE
                   </div>
-                  解析以下加密序列：<br/>
+                  <span className="text-white leading-relaxed">解析以下加密序列：</span><br/>
                   <div className="text-yellow-400 text-2xl md:text-4xl font-bold mt-2 tracking-widest drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]">{currentQuestionData?.text}</div>
+                  {currentQuestionData?.options && (
+                    <div className="mt-6 flex flex-col gap-3 w-full max-w-md">
+                      {currentQuestionData.options.map((opt, i) => (
+                        <div key={i} className="bg-black/40 border border-[#00FF41]/30 rounded-lg p-3 text-left text-lg md:text-xl text-[#00FF41]">{opt}</div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <input type="text" value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="輸入破解數字..." className="w-full bg-black/50 border-2 border-[#00FF41] rounded-xl p-6 text-center text-3xl outline-none focus:bg-[#00FF41]/10" />
                 <button type="submit" className="w-full bg-[#00FF41] text-black font-bold text-2xl p-6 rounded-xl active:scale-95">送出</button>
@@ -602,7 +617,6 @@
           <MathCanvasBackground />
           <div className="relative z-10 w-full max-w-[430px] md:max-w-3xl lg:max-w-4xl h-[95dvh] md:h-[85vh] bg-black/85 md:border md:border-[#00FF41]/30 md:rounded-2xl flex flex-col shadow-[0_0_40px_rgba(0,255,65,0.15)] backdrop-blur-[2px]">
 
-            {/* 💡 頂部 Navbar - 手機優化：字體調小，去除名字寬度限制 */}
             <div className="flex items-center justify-between p-4 border-b border-[#00FF41]/30 bg-black/50 md:rounded-t-2xl relative z-20 shrink-0">
               <div className="flex items-center gap-1 md:gap-2">
                 <span className="font-bold tracking-widest text-sm md:text-2xl drop-shadow-[0_0_5px_#00FF41]">&gt;_MATH_MONSTER</span>
@@ -612,7 +626,7 @@
                 <div className="flex gap-3 md:gap-4 items-center bg-black/50 px-3 py-1 rounded-full border border-[#00FF41]/20 shrink-0">
                   <span className="text-[#00FF41]/90 text-sm md:text-base">{nickname}</span>
                   <div className="h-4 w-[1px] bg-[#00FF41]/20"></div>
-                  <span className="text-yellow-400 font-bold text-sm md:text-base">🏆 {myScore}</span>
+                  <span className="text-orange-500 font-bold text-sm md:text-base">🏆 {myScore}</span>
                 </div>
               )}
             </div>
@@ -662,6 +676,12 @@
                       <div className="mb-2">
                         <p className="text-[#00FF41]/80 text-lg">本題正確答案：</p>
                         <p className="text-3xl text-white font-bold tracking-widest">{correctAnswer}</p>
+                        {/* 💡 顯示解答說明 */}
+                        {explanation && (
+                          <div className="mt-4 bg-[#00FF41]/10 border border-[#00FF41]/30 rounded-xl p-3 inline-block text-left">
+                            <p className="text-[#00FF41] text-sm md:text-base">💡 說明：{explanation}</p>
+                          </div>
+                        )}
                       </div>
                     )}
 

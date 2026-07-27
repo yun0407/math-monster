@@ -64,7 +64,7 @@
       const [gameState, setGameState] = useState('login');
       const [timeLeft, setTimeLeft] = useState(0);
       const [players, setPlayers] = useState([]);
-      const [hostPlayerDetails, setHostPlayerDetails] = useState([]); // 新增：供主持人監看的詳細資料
+      const [hostPlayerDetails, setHostPlayerDetails] = useState([]);
       const [currentQuestionData, setCurrentQuestionData] = useState(null);
       const [selectedQ, setSelectedQ] = useState({ stage_1: 0, stage_4: 0 });
 
@@ -108,13 +108,20 @@
 
           if (isHost) {
             if (data.type === 'UPDATE_PLAYERS') setPlayers(data.players.filter(p => p !== 'HOST'));
-            // 接收詳細資料以供監看
             if (data.type === 'HOST_UPDATE') setHostPlayerDetails(data.player_details);
 
             if (data.type === 'CHANGE_STATE') {
               setGameState(data.state);
               if (data.state === 'result' && data.leaderboard) setLeaderboardData(data.leaderboard);
             }
+
+            // 🐛 【修正盲點】：讓主持人也接收 START_TIMER 指令，並開始倒數計時！
+            if (data.type === 'START_TIMER') {
+              setCurrentQuestionData(data.questionData);
+              setIsBingoStage(data.stage === 'stage_2');
+              startLocalTimer(data.time, data.stage);
+            }
+
           } else {
             if (data.type === 'CHANGE_STATE') {
               setGameState(data.state);
@@ -191,7 +198,6 @@
       const submitAnswerToBackend = (e) => {
         if(e) e.preventDefault();
         setIsSubmitted(true);
-        // 如果是 Bingo 關卡，強制作答為 BINGO 讓主持人面板好看一點
         const finalAnswer = isBingoStage ? "BINGO!" : answer;
         safeSend({ type: 'SUBMIT_ANSWER', name: nickname, answer: finalAnswer });
       };
@@ -269,7 +275,6 @@
                   </>
                 ) : (
                   <>
-                    {/* 全新升級：特務動態監看面板 */}
                     <h2 className="text-xl mb-4 border-b border-gray-600 pb-2">連線特務狀態</h2>
                     <div className="flex flex-col gap-2">
                       {hostPlayerDetails.length === 0 && <p className="text-gray-500">等待玩家連線...</p>}
@@ -297,9 +302,16 @@
               <div className="md:col-span-2 space-y-6">
                 <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                   <h2 className="text-xl mb-4 border-b border-gray-600 pb-2">全局控制</h2>
-                  <div className="flex gap-4">
+                  <div className="flex gap-4 flex-wrap items-center">
                     <button onClick={() => hostChangeState('waiting')} className="px-6 py-3 bg-blue-900/50 hover:bg-blue-900 border border-blue-500 rounded text-blue-100 transition">切換至等待大廳</button>
                     <button onClick={() => hostChangeState('result')} className="px-6 py-3 bg-yellow-900/50 hover:bg-yellow-900 border border-yellow-500 rounded text-yellow-100 transition">強制進入結算 (提早收卷)</button>
+
+                    {/* 🕒 【新增】：主持人面板上的超顯眼倒數計時器 */}
+                    {gameState.startsWith('stage_') && gameState !== 'stage_2' && (
+                      <div className="ml-auto bg-red-950/50 border border-red-500 px-6 py-3 rounded text-red-500 font-bold text-xl flex items-center gap-2">
+                        ⏱️ {timeLeft}s
+                      </div>
+                    )}
                   </div>
                 </div>
 

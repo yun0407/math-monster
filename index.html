@@ -125,9 +125,9 @@
             if (data.type === 'CHANGE_STATE') {
               if (window.gameTimer) clearInterval(window.gameTimer);
               setGameState(data.state);
-              if (data.state === 'result' && data.leaderboard) {
+              if ((data.state === 'result' || data.state === 'final_leaderboard') && data.leaderboard) {
                   setLeaderboardData(data.leaderboard);
-                  setCorrectAnswer(data.correct_answer);
+                  setCorrectAnswer(data.correct_answer || '');
                   setExplanation(data.explanation || '');
               }
             }
@@ -143,9 +143,9 @@
               if (window.gameTimer) clearInterval(window.gameTimer);
               setGameState(data.state);
               if (data.state === 'login') { setNickname(''); }
-              if (data.state === 'result' && data.leaderboard) {
+              if ((data.state === 'result' || data.state === 'final_leaderboard') && data.leaderboard) {
                 setLeaderboardData(data.leaderboard);
-                setCorrectAnswer(data.correct_answer);
+                setCorrectAnswer(data.correct_answer || '');
                 setExplanation(data.explanation || '');
 
                 const myData = data.leaderboard.find(p => p.name === nicknameRef.current);
@@ -177,25 +177,32 @@
         if(nickname) { setGameState('waiting'); safeSend({ type: 'PLAYER_JOIN', name: nickname }); }
       };
 
+      // 💡 修正：絕對時間校正法的防休眠計時器
       const startLocalTimer = (seconds, stage) => {
-        setTimeLeft(seconds); setIsSubmitted(false); setAnswer('');
-        setExplanation('');
+        setIsSubmitted(false); setAnswer(''); setExplanation('');
         setGameState(stage);
 
+        const endTime = Date.now() + seconds * 1000;
+        setTimeLeft(seconds);
+
         if (window.gameTimer) clearInterval(window.gameTimer);
+
+        // 頻率調快至 500ms 檢查一次，確保畫面更新流暢且精準
         window.gameTimer = setInterval(() => {
-          setTimeLeft((prev) => {
-            if (prev <= 1) {
-              clearInterval(window.gameTimer);
-              if (stage !== 'stage_2') {
-                  if (isHost) safeSend({ type: 'CHANGE_STATE', state: 'result' });
-                  else if (isPlayer && !isSubmitted) { safeSend({ type: 'SUBMIT_ANSWER', name: nicknameRef.current, answer: "未作答" }); setIsSubmitted(true); }
-              }
-              return 0;
+          const currentLeft = Math.max(0, Math.ceil((endTime - Date.now()) / 1000));
+          setTimeLeft(currentLeft);
+
+          if (currentLeft <= 0) {
+            clearInterval(window.gameTimer);
+            if (stage !== 'stage_2') {
+                if (isHost) safeSend({ type: 'CHANGE_STATE', state: 'result' });
+                else if (isPlayer && !isSubmitted) {
+                  safeSend({ type: 'SUBMIT_ANSWER', name: nicknameRef.current, answer: "未作答" });
+                  setIsSubmitted(true);
+                }
             }
-            return prev - 1;
-          });
-        }, 1000);
+          }
+        }, 500);
       };
 
       const hostChangeState = (state) => { safeSend({ type: 'CHANGE_STATE', state: state }); };
@@ -275,13 +282,35 @@
         return 'bg-[#00FF41] text-black';
       };
 
-      // 💡 更新關卡名稱為白發光字體
       const getStageTitle = (state) => {
         if (state === 'stage_1') return 'STAGE 01: MATH_HUNTER';
         if (state === 'stage_2') return 'STAGE 02: 5x5 BINGO';
         if (state === 'stage_4') return 'STAGE 03: SEQUENCE_MASTER';
         return '';
       };
+
+      // 💡 共用的 Ｋ• Ｏ榜 組件 (用於 Player 與 Display)
+      const FinalLeaderboardView = () => (
+        <div className="text-center w-full max-w-4xl mx-auto my-auto py-8">
+          <h2 className="text-5xl md:text-7xl font-bold text-orange-500 drop-shadow-[0_0_15px_#f97316] tracking-widest mb-8">ＫＯ榜</h2>
+          <div className="bg-black/60 p-6 md:p-8 rounded-3xl border-2 border-orange-500/50 shadow-[0_0_30px_rgba(249,115,22,0.2)]">
+             <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+               {leaderboardData.map((p, i) => (
+                 <div key={i} className={`flex justify-between items-center text-lg md:text-2xl p-4 rounded-xl border ${i < 3 ? 'border-orange-500/50 bg-orange-500/10' : 'border-gray-700 bg-gray-800/50'}`}>
+                    <div className="flex gap-4 items-center">
+                      <span className="w-8 text-center text-2xl md:text-3xl">
+                        {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="text-gray-500 font-bold text-lg md:text-2xl">{i+1}</span>}
+                      </span>
+                      <span className={p.name === nicknameRef.current ? "text-orange-400 font-bold" : "text-white font-bold"}>{p.name}</span>
+                    </div>
+                    <span className="text-orange-400 font-bold text-2xl md:text-3xl">{p.score} <span className="text-sm md:text-lg text-gray-400">分</span></span>
+                 </div>
+               ))}
+             </div>
+          </div>
+        </div>
+      );
+
 
       // ==========================================
       // 大螢幕觀戰面板 (Display Role)
@@ -295,7 +324,6 @@
               <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold text-[#00FF41] tracking-widest drop-shadow-[0_0_10px_#00FF41] flex flex-col md:flex-row items-center justify-center gap-3 md:gap-5">
                 <span className="whitespace-nowrap">MATH_MONSTER LIVE</span>
                 {gameState.startsWith('stage_') && (
-                  // 💡 螢幕頂部的關卡名稱：白發光樣式
                   <span className="text-base md:text-2xl lg:text-3xl text-white bg-black/60 px-5 md:px-6 py-2 rounded-xl border-2 border-white/50 whitespace-nowrap shadow-[0_0_15px_rgba(255,255,255,0.3)] font-bold tracking-widest">{getStageTitle(gameState)}</span>
                 )}
               </h1>
@@ -313,7 +341,7 @@
 
               {(gameState === 'login' || gameState === 'waiting') && (
                 <div className="text-center mt-20 w-full">
-                  <h2 className="text-6xl text-[#00FF41] mb-12 font-bold animate-pulse drop-shadow-[0_0_15px_#00FF41]">等待特務連線中...</h2>
+                  <h2 className="text-6xl text-[#00FF41] mb-12 font-bold animate-pulse drop-shadow-[0_0_15px_#00FF41]">等待任務發送...</h2>
                   <div className="flex flex-wrap justify-center gap-6">
                     {players.length === 0 && <p className="text-gray-500 text-3xl">尚無特務加入</p>}
                     {players.map((p, i) => (
@@ -351,7 +379,7 @@
 
                             <span className={`font-bold rounded-full tracking-widest ${style.status}
                               ${p.has_answered ? 'bg-[#00FF41] text-black' :
-                               (isBingoStage && p.bingo_lines > 0 ? 'bg-orange-500 text-white shadow-[0_0_15px_#f6b26b]' : 'bg-yellow-500 text-black animate-pulse')}`}>
+                               (isBingoStage && p.bingo_lines > 0 ? 'bg-orange-500 text-white shadow-[0_0_15px_#f97316]' : 'bg-yellow-500 text-black animate-pulse')}`}>
                               {p.has_answered
                                 ? (isBingoStage ? 'BINGO!' : '已送出')
                                 : (isBingoStage ? (p.bingo_lines > 0 ? `✨ 已連線 ${p.bingo_lines} 條` : '⏳ 等待圈選...') : '作答中...')}
@@ -411,6 +439,10 @@
                   })()}
                 </div>
               )}
+
+              {/* 💡 大螢幕版的 Ｋ•Ｏ榜 */}
+              {gameState === 'final_leaderboard' && <FinalLeaderboardView />}
+
             </div>
           </div>
         );
@@ -437,7 +469,7 @@
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 max-h-[80vh] overflow-y-auto">
-                {gameState === 'result' ? (
+                {gameState === 'result' || gameState === 'final_leaderboard' ? (
                   <>
                     <h2 className="text-xl mb-4 border-b border-gray-600 pb-2 text-yellow-400 font-bold">🏆 全班排行榜</h2>
                     <div className="flex flex-col gap-2">
@@ -490,9 +522,11 @@
               <div className="md:col-span-2 space-y-6">
                 <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
                   <h2 className="text-xl mb-4 border-b border-gray-600 pb-2">全局控制</h2>
-                  <div className="flex gap-4">
+                  <div className="flex flex-wrap gap-4">
                     <button onClick={() => hostChangeState('waiting')} className="px-6 py-3 bg-blue-900/50 hover:bg-blue-900 border border-blue-500 rounded text-blue-100 transition">切換至等待大廳</button>
                     <button onClick={() => hostChangeState('result')} className="px-6 py-3 bg-yellow-900/50 hover:bg-yellow-900 border border-yellow-500 rounded text-yellow-100 transition">強制進入結算 (提早收卷)</button>
+                    {/* 💡 新增的 Ｋ•Ｏ榜 按鈕 */}
+                    <button onClick={() => hostChangeState('final_leaderboard')} className="px-6 py-3 bg-orange-900/50 hover:bg-orange-800 border border-orange-500 rounded text-orange-100 transition font-bold shadow-[0_0_10px_rgba(249,115,22,0.4)] ml-auto">公佈 ＫＯ 榜</button>
                   </div>
                 </div>
 
@@ -500,7 +534,6 @@
                   <h2 className="text-xl mb-4 border-b border-gray-600 pb-2">題庫發送區</h2>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="p-4 bg-gray-900 border border-[#00FF41]/50 rounded-xl">
-                      {/* 💡 主持人面板關卡名稱統一 */}
                       <div className="text-[#00FF41] mb-2 font-bold">第一關: Math_Hunter</div>
                       <select className="w-full bg-black text-white p-2 rounded mb-3 border border-gray-600" onChange={(e) => setSelectedQ({...selectedQ, stage_1: parseInt(e.target.value)})}>
                         {window.DB_STAGE_1?.map((q, i) => <option key={i} value={i}>第 {i+1} 題 ({q.time}s)</option>)}
@@ -508,10 +541,11 @@
                       <button onClick={() => hostStartStage('stage_1', 'DB_STAGE_1')} className="w-full bg-green-700 hover:bg-green-600 text-white p-2 rounded font-bold transition">發送題目</button>
                     </div>
 
-                    <div className="p-4 bg-gray-900 border border-purple-500/50 rounded-xl">
-                      <div className="text-purple-400 mb-2 font-bold">第二關: 5x5 Bingo</div>
+                    {/* 💡 換成 Tiffany 綠 (teal-400 / teal-600) */}
+                    <div className="p-4 bg-gray-900 border border-teal-500/50 rounded-xl">
+                      <div className="text-teal-400 mb-2 font-bold">第二關: 5x5 Bingo</div>
                       <p className="text-xs text-gray-400 mb-4 h-12">無倒數，前四位連滿三條線者獲勝。滿四人會自動結算。</p>
-                      <button onClick={() => hostStartStage('stage_2', '')} className="w-full bg-purple-700 hover:bg-purple-600 text-white p-2 rounded font-bold transition shadow-[0_0_10px_rgba(168,85,247,0.3)]">開始 Bingo</button>
+                      <button onClick={() => hostStartStage('stage_2', '')} className="w-full bg-teal-700 hover:bg-teal-600 text-white p-2 rounded font-bold transition shadow-[0_0_10px_rgba(20,184,166,0.3)]">開始 Bingo</button>
                     </div>
 
                     <div className="p-4 bg-gray-900 border border-gray-700 rounded-xl opacity-50 cursor-not-allowed">
@@ -550,7 +584,6 @@
           case 'stage_1':
             return (
               <form onSubmit={submitAnswerToBackend} className="my-auto space-y-5 w-full">
-                {/* 💡 玩家畫面的白發光關卡名稱 */}
                 <div className="bg-[#00FF41]/5 p-6 rounded-2xl border-2 border-[#00FF41]/30 text-center shadow-inner flex flex-col items-center">
                   <div className="bg-black/60 border border-white/50 rounded-lg px-6 py-2 text-sm md:text-base mb-5 font-bold tracking-widest shadow-[0_0_15px_rgba(255,255,255,0.3)] text-white">
                     STAGE_01: MATH_HUNTER
@@ -595,7 +628,7 @@
                 <button onClick={submitAnswerToBackend} disabled={bingoLines < 3 || isSubmitted}
                   className={`w-full font-bold text-xl md:text-2xl p-4 rounded-xl mt-2 transition-all
                   ${isSubmitted ? 'bg-gray-600 text-gray-300 border border-gray-700' : bingoLines >= 3 ? 'bg-[#00FF41] text-black active:scale-95 animate-pulse' : 'bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed'}`}>
-                  {isSubmitted ? '已成功賓果！等待結算...' : bingoLines >= 3 ? '宣佈連線 (BINGO!)' : '未達 3 條連線'}
+                  {isSubmitted ? '已成功宣告！等待結算...' : bingoLines >= 3 ? '宣佈連線 (BINGO!)' : '未達 3 條連線'}
                 </button>
               </div>
             );
@@ -664,7 +697,7 @@
 
               {gameState === 'waiting' && (
                 <div className="text-center space-y-10 w-full max-w-2xl mx-auto my-auto py-8">
-                  <h2 className="text-3xl md:text-5xl font-bold leading-tight animate-pulse">等待主機發送任務...</h2>
+                  <h2 className="text-3xl md:text-5xl font-bold leading-tight animate-pulse">等待任務發送...</h2>
                   <div className="bg-[#00FF41]/10 p-8 rounded-2xl border border-[#00FF41]/30">
                     <p className="text-[#00FF41]/80 text-xl">請觀看現場大螢幕或等待主持人指示</p>
                   </div>
@@ -682,7 +715,10 @@
                 </div>
               )}
 
-              {/* 【分數結算與全班排行榜畫面 (Player View)】 */}
+              {/* 💡 玩家版的 Ｋ•Ｏ榜 */}
+              {gameState === 'final_leaderboard' && <FinalLeaderboardView />}
+
+              {/* 【分數結算與當局排行榜畫面 (Player View)】 */}
               {gameState === 'result' && (
                 <div className="text-center space-y-6 w-full max-w-2xl mx-auto my-auto py-8">
                   <h2 className="text-4xl md:text-6xl font-bold text-white drop-shadow-[0_0_10px_#00FF41]">回合結束</h2>
@@ -735,7 +771,8 @@
                     <p className="text-lg md:text-xl text-white mb-2">🏆 你的總積分：<span className="text-3xl font-bold text-orange-500">{myScore}</span></p>
 
                     <div className="mt-4 text-left">
-                       <p className="text-[#00FF41]/80 text-sm mb-2 border-b border-[#00FF41]/30 pb-1">全班排行榜 (Top 5)</p>
+                       {/* 💡 修正文字 */}
+                       <p className="text-[#00FF41]/80 text-sm mb-2 border-b border-[#00FF41]/30 pb-1">排行榜 (Top 5)</p>
                        <div className="space-y-2">
                          {leaderboardData.slice(0, 5).map((p, i) => (
                            <div key={i} className="flex justify-between items-center text-sm md:text-base bg-[#00FF41]/5 p-2 rounded border border-[#00FF41]/20">
@@ -764,3 +801,4 @@
   </script>
 </body>
 </html>
+

@@ -54,8 +54,7 @@ class ConnectionManager:
                 "name": k,
                 "score": v["score"],
                 "has_answered": v.get("has_answered", False),
-                "last_answer": v.get("last_answer", ""),
-                "bingo_lines": v.get("bingo_lines", 0) # 💡 新增：把連線數傳給大螢幕
+                "last_answer": v.get("last_answer", "")
             }
             for k, v in self.players_state.items()
         ]
@@ -73,8 +72,7 @@ async def websocket_endpoint(websocket: WebSocket):
             message = json.loads(data)
             action_type = message.get("type")
 
-            # 濾掉太多無用連線 log，加入 UPDATE_BINGO_LINES
-            if action_type not in ["SYNC_COOP", "UPDATE_BINGO_LINES"]:
+            if action_type != "SYNC_COOP":
                 print(f"📥 收到指令: {action_type}")
 
             if action_type == "PLAYER_JOIN":
@@ -85,8 +83,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     manager.players_state[name] = {
                         "score": 0, "partner": None, "cards": [],
                         "is_correct": False, "rank": -1,
-                        "has_answered": False, "last_answer": "",
-                        "bingo_lines": 0 # 初始化 Bingo 連線數
+                        "has_answered": False, "last_answer": ""
                     }
 
                 print(f"✅ [登入] {name} 已上線")
@@ -118,18 +115,9 @@ async def websocket_endpoint(websocket: WebSocket):
                     p["is_correct"] = False
                     p["rank"] = -1
                     p["last_answer"] = ""
-                    p["bingo_lines"] = 0 # 回合開始重置連線數
 
                 await manager.broadcast(message)
                 await manager.broadcast_host_update()
-
-            # 💡【新增】：接收玩家點擊 Bingo 盤的進度
-            elif action_type == "UPDATE_BINGO_LINES":
-                name = message.get("name")
-                lines = message.get("lines", 0)
-                if name in manager.players_state:
-                    manager.players_state[name]["bingo_lines"] = lines
-                    await manager.broadcast_host_update() # 即時轉發給大螢幕
 
             elif action_type == "SUBMIT_ANSWER":
                 name = message.get("name")
@@ -159,10 +147,8 @@ async def websocket_endpoint(websocket: WebSocket):
                             manager.players_state[name]["has_answered"] = True
                             manager.players_state[name]["rank"] = rank
                             manager.players_state[name]["is_correct"] = True
-                            print(f"🎯 [BINGO] {name} 第 {rank} 名, 獲得 {points} 分")
 
                             if len(manager.bingo_winners) >= 4:
-                                print("🔔 [BINGO] 已滿 4 人，自動強制結算")
                                 for p_name, p_state in manager.players_state.items():
                                     if not p_state.get("has_answered"):
                                         p_state["round_added_score"] = 3
@@ -227,8 +213,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "explanation": manager.current_explanation
                                 })
 
-            elif action_type == "CHANGE_STATE" and message.get("state") == "result":
-                if manager.current_stage == "stage_2":
+            # 💡【修改】：讓 result 和 final_leaderboard 都可以帶出最新的排行榜資料
+            elif action_type == "CHANGE_STATE" and message.get("state") in ["result", "final_leaderboard"]:
+                if manager.current_stage == "stage_2" and message.get("state") == "result":
                     for p_name, p_state in manager.players_state.items():
                         if not p_state.get("has_answered"):
                             p_state["round_added_score"] = 3
@@ -252,7 +239,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 await manager.broadcast({
                     "type": "CHANGE_STATE",
-                    "state": "result",
+                    "state": message.get("state"),
                     "leaderboard": leaderboard,
                     "correct_answer": manager.current_correct_answer,
                     "explanation": manager.current_explanation
@@ -266,6 +253,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 active_names = list(manager.active_connections.values())
                 keys_to_delete = [name for name in manager.players_state.keys() if name not in active_names]
+
                 for k in keys_to_delete:
                     del manager.players_state[k]
 
@@ -277,7 +265,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     p["is_correct"] = False
                     p["rank"] = -1
                     p["last_answer"] = ""
-                    p["bingo_lines"] = 0
 
                 await manager.broadcast({"type": "SCORES_RESET"})
                 await manager.broadcast_host_update()

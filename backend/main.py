@@ -287,3 +287,4 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         traceback.print_exc()
         manager.disconnect(websocket)
+

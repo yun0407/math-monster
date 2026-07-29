@@ -17,6 +17,12 @@
   <style>
     body { margin: 0; overflow: hidden; background-color: #0A0A0A; }
     ::-webkit-scrollbar { display: none; }
+    @keyframes popIn {
+      0% { transform: scale(0) translateY(50px); opacity: 0; }
+      70% { transform: scale(1.2) translateY(-10px); opacity: 1; }
+      100% { transform: scale(1) translateY(0); opacity: 1; }
+    }
+    .lotto-ball { animation: popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
   </style>
 </head>
 <body>
@@ -71,7 +77,7 @@
       const [players, setPlayers] = useState([]);
       const [hostPlayerDetails, setHostPlayerDetails] = useState([]);
       const [currentQuestionData, setCurrentQuestionData] = useState(null);
-      const [selectedQ, setSelectedQ] = useState({ stage_1: 0, stage_4: 0 });
+      const [selectedQ, setSelectedQ] = useState({ stage_1: 0, stage_3: 0, stage_4: 0 });
 
       const [leaderboardData, setLeaderboardData] = useState([]);
       const [correctAnswer, setCorrectAnswer] = useState('');
@@ -86,6 +92,10 @@
       const [bingoGrid, setBingoGrid] = useState([]);
       const [bingoLines, setBingoLines] = useState(0);
       const [isBingoStage, setIsBingoStage] = useState(false);
+      const [calledNumbers, setCalledNumbers] = useState([]);
+      const [callNumInput, setCallNumInput] = useState('');
+      const [bingoAlert, setBingoAlert] = useState(null);
+      const [playerLinesMap, setPlayerLinesMap] = useState({});
 
       const [myScore, setMyScore] = useState(0);
       const [myAddedScore, setMyAddedScore] = useState(0);
@@ -112,13 +122,9 @@
             setIsConnected(true);
             setIsReconnecting(false);
 
-            if (isHost) {
-              ws.send(JSON.stringify({ type: 'PLAYER_JOIN', name: 'HOST' }));
-            } else if (isDisplay) {
-              ws.send(JSON.stringify({ type: 'PLAYER_JOIN', name: 'DISPLAY' }));
-            } else if (nicknameRef.current) {
-              ws.send(JSON.stringify({ type: 'PLAYER_JOIN', name: nicknameRef.current }));
-            }
+            if (isHost) ws.send(JSON.stringify({ type: 'PLAYER_JOIN', name: 'HOST' }));
+            else if (isDisplay) ws.send(JSON.stringify({ type: 'PLAYER_JOIN', name: 'DISPLAY' }));
+            else if (nicknameRef.current) ws.send(JSON.stringify({ type: 'PLAYER_JOIN', name: nicknameRef.current }));
 
             pingInterval = setInterval(() => {
               if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'PING' }));
@@ -128,7 +134,6 @@
           ws.onclose = () => {
             setIsConnected(false);
             clearInterval(pingInterval);
-
             if (nicknameRef.current || isHost || isDisplay) {
               setIsReconnecting(true);
               setTimeout(connectWebSocket, 3000);
@@ -145,22 +150,36 @@
               return;
             }
 
-            if (data.type === 'UPDATE_PLAYERS') {
-              setPlayers(data.players.filter(p => p !== 'HOST' && p !== 'DISPLAY'));
+            if (data.type === 'UPDATE_CALLED_NUMBERS') {
+              setCalledNumbers(data.called_numbers);
+              return;
             }
+
+            if (data.type === 'UPDATE_BINGO_LINES') {
+              setPlayerLinesMap(prev => ({ ...prev, [data.name]: data.lines }));
+              return;
+            }
+
+            if (data.type === 'BINGO_ACHIEVED') {
+              setBingoAlert({ name: data.name, rank: data.rank });
+              // 🌟 BINGO 彈窗改為 5 秒
+              setTimeout(() => setBingoAlert(null), 5000);
+              return;
+            }
+
+            if (data.type === 'UPDATE_PLAYERS') setPlayers(data.players.filter(p => p !== 'HOST' && p !== 'DISPLAY'));
 
             if (isHost) {
               if (data.type === 'HOST_UPDATE') setHostPlayerDetails(data.player_details);
-
               if (data.type === 'CHANGE_STATE') {
                 setGameState(data.state);
-                if ((data.state === 'result' || data.state === 'final_leaderboard') && data.leaderboard) {
-                  setLeaderboardData(data.leaderboard);
-                }
+                if ((data.state === 'result' || data.state === 'final_leaderboard') && data.leaderboard) setLeaderboardData(data.leaderboard);
               }
               if (data.type === 'START_TIMER') {
                 setCurrentQuestionData(data.questionData);
                 setIsBingoStage(data.stage === 'stage_2');
+                setCalledNumbers([]);
+                setPlayerLinesMap({});
                 startLocalTimer(data.time, data.stage);
               }
             } else {
@@ -187,6 +206,8 @@
               } else if (data.type === 'START_TIMER') {
                 setCurrentQuestionData(data.questionData);
                 setIsBingoStage(data.stage === 'stage_2');
+                setCalledNumbers([]);
+                setPlayerLinesMap({});
                 startLocalTimer(data.time, data.stage);
               }
             }
@@ -194,11 +215,7 @@
         };
 
         connectWebSocket();
-
-        return () => {
-          if (ws) { ws.onclose = null; ws.close(); }
-          clearInterval(pingInterval);
-        };
+        return () => { if (ws) { ws.onclose = null; ws.close(); } clearInterval(pingInterval); };
       }, [isHost, isDisplay]);
 
       const safeSend = (msgObject) => {
@@ -228,8 +245,7 @@
                   if (isHost) safeSend({ type: 'CHANGE_STATE', state: 'result' });
                   else if (!isHost && !isDisplay && !isSubmittedRef.current) {
                       safeSend({ type: 'SUBMIT_ANSWER', name: nicknameRef.current, answer: "未作答" });
-                      setIsSubmitted(true);
-                      isSubmittedRef.current = true;
+                      setIsSubmitted(true); isSubmittedRef.current = true;
                   }
               }
               return 0;
@@ -240,9 +256,8 @@
       };
 
       const hostChangeState = (state) => { safeSend({ type: 'CHANGE_STATE', state: state }); };
-
       const resetAllScores = () => { if (window.confirm("⚠️ 警告：確定要清除所有挑戰者目前的積分嗎？此動作無法復原！")) safeSend({ type: 'RESET_SCORES' }); };
-      const clearOfflinePlayers = () => { if (window.confirm("🧹 確定要清除目前離線的幽靈玩家嗎？")) safeSend({ type: 'CLEAR_OFFLINE' }); };
+      const clearOfflinePlayers = () => { if (window.confirm("🧹 確定要清除目前離線的幽靈資料嗎？")) safeSend({ type: 'CLEAR_OFFLINE' }); };
 
       const hostStartStage = (stageName, dbName) => {
         const qIndex = selectedQ[stageName] || 0;
@@ -251,26 +266,34 @@
         else safeSend({ type: 'START_TIMER', time: questionData.time, stage: stageName, questionData: questionData });
       };
 
+      const hostCallNumber = () => {
+        const num = parseInt(callNumInput);
+        if (num > 0 && num <= 16) {
+          safeSend({ type: 'CALL_BINGO_NUMBER', number: num });
+          setCallNumInput('');
+        } else {
+          alert('請輸入 1~16 的數字！');
+        }
+      };
+
       const submitAnswerToBackend = (e) => {
         if(e) e.preventDefault();
         if (isSubmittedRef.current) return;
-        setIsSubmitted(true);
-        isSubmittedRef.current = true;
+        setIsSubmitted(true); isSubmittedRef.current = true;
         const finalAnswer = isBingoStage ? "BINGO!" : answer;
         safeSend({ type: 'SUBMIT_ANSWER', name: nickname, answer: finalAnswer });
       };
 
       const handleOptionSubmit = (opt) => {
         if (isSubmittedRef.current) return;
-        setIsSubmitted(true);
-        isSubmittedRef.current = true;
+        setIsSubmitted(true); isSubmittedRef.current = true;
         setAnswer(opt);
         safeSend({ type: 'SUBMIT_ANSWER', name: nickname, answer: opt });
       };
 
       useEffect(() => {
         if (!isHost && !isDisplay && gameState === 'stage_2' && bingoGrid.length === 0) {
-          const allNums = Array.from({length: 25}, (_, i) => i + 1);
+          const allNums = Array.from({length: 16}, (_, i) => i + 1);
           const shuffled = allNums.sort(() => Math.random() - 0.5);
           setBingoGrid(shuffled.map(n => ({ num: n, selected: false })));
           setBingoLines(0);
@@ -280,19 +303,57 @@
 
       const checkBingo = (grid) => {
         let lines = 0;
-        for (let r = 0; r < 5; r++) { if (grid[r*5].selected && grid[r*5+1].selected && grid[r*5+2].selected && grid[r*5+3].selected && grid[r*5+4].selected) lines++; }
-        for (let c = 0; c < 5; c++) { if (grid[c].selected && grid[c+5].selected && grid[c+10].selected && grid[c+15].selected && grid[c+20].selected) lines++; }
-        if (grid[0].selected && grid[6].selected && grid[12].selected && grid[18].selected && grid[24].selected) lines++;
-        if (grid[4].selected && grid[8].selected && grid[12].selected && grid[16].selected && grid[20].selected) lines++;
+        for (let r = 0; r < 4; r++) { if (grid[r*4].selected && grid[r*4+1].selected && grid[r*4+2].selected && grid[r*4+3].selected) lines++; }
+        for (let c = 0; c < 4; c++) { if (grid[c].selected && grid[c+4].selected && grid[c+8].selected && grid[c+12].selected) lines++; }
+        if (grid[0].selected && grid[5].selected && grid[10].selected && grid[15].selected) lines++;
+        if (grid[3].selected && grid[6].selected && grid[9].selected && grid[12].selected) lines++;
         return lines;
       };
 
       const handleBingoClick = (index) => {
         if (isSubmittedRef.current) return;
+
+        const targetNum = bingoGrid[index].num;
+        if (!bingoGrid[index].selected && !calledNumbers.includes(targetNum)) {
+            // 防呆提醒已經取消 alert，直接返回即可
+            return;
+        }
+
         const newGrid = [...bingoGrid];
         newGrid[index].selected = !newGrid[index].selected;
         setBingoGrid(newGrid);
-        setBingoLines(checkBingo(newGrid));
+
+        const newLines = checkBingo(newGrid);
+        setBingoLines(newLines);
+
+        safeSend({ type: 'SYNC_BINGO_LINES', name: nickname, lines: newLines });
+
+        if (newLines >= 3 && !isSubmittedRef.current) {
+            setIsSubmitted(true);
+            isSubmittedRef.current = true;
+            safeSend({ type: 'SUBMIT_ANSWER', name: nickname, answer: "BINGO!" });
+        }
+      };
+
+      // 🌟 將「請問」進行斷行處理的 Helper 函數
+      const renderQuestionText = (text) => {
+        if (!text) return null;
+        return text.split(/(請問)/g).map((part, i) =>
+          part === '請問' ? <React.Fragment key={i}><br/>請問</React.Fragment> : part
+        );
+      };
+
+      const GlobalBingoAlert = () => {
+        if (!bingoAlert) return null;
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-none">
+            <div className="bg-gradient-to-br from-yellow-300 to-yellow-600 text-black px-16 py-12 rounded-3xl text-center shadow-[0_0_80px_rgba(250,204,21,1)] animate-bounce border-4 border-white transform scale-110">
+               <h2 className="text-6xl md:text-8xl font-black mb-6 drop-shadow-md">🎉 BINGO! 🎉</h2>
+               <p className="text-4xl md:text-5xl font-bold">挑戰者 <span className="text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">{bingoAlert.name}</span></p>
+               <p className="text-3xl md:text-4xl mt-6 font-bold bg-black/20 inline-block px-6 py-2 rounded-full">奪得第 {bingoAlert.rank} 名</p>
+            </div>
+          </div>
+        );
       };
 
       // ==========================================
@@ -300,7 +361,8 @@
       // ==========================================
       if (isHost) {
         return (
-          <div className="min-h-screen bg-gray-900 text-white p-6 font-mono overflow-y-auto">
+          <div className="min-h-screen bg-gray-900 text-white p-6 font-mono overflow-y-auto relative">
+            <GlobalBingoAlert />
             <header className="border-b border-[#00FF41] pb-4 mb-6 flex justify-between items-center flex-wrap gap-4">
               <div className="flex items-center gap-3">
                 <h1 className="text-3xl font-bold text-[#00FF41]">SYSTEM_HOST_DASHBOARD</h1>
@@ -308,12 +370,8 @@
               </div>
               <div className="flex gap-2 items-center flex-wrap">
                 <div className="bg-gray-800 px-4 py-2 rounded">連線: <span className="text-[#00FF41] font-bold">{players.length}</span></div>
-                <button onClick={clearOfflinePlayers} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-500 rounded text-gray-200 transition text-sm">
-                   🧹 清除離線幽靈
-                </button>
-                <button onClick={resetAllScores} className="px-4 py-2 bg-red-900/50 hover:bg-red-700 border border-red-500 rounded text-red-100 transition shadow-[0_0_8px_rgba(239,68,68,0.5)]">
-                   清除所有積分
-                </button>
+                <button onClick={clearOfflinePlayers} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-500 rounded text-gray-200 transition text-sm">🧹 清除離線幽靈</button>
+                <button onClick={resetAllScores} className="px-4 py-2 bg-red-900/50 hover:bg-red-700 border border-red-500 rounded text-red-100 transition shadow-[0_0_8px_rgba(239,68,68,0.5)]">清除所有積分</button>
               </div>
             </header>
 
@@ -321,16 +379,11 @@
               <div className="bg-gray-800 p-4 rounded-xl border border-gray-700 max-h-[80vh] overflow-y-auto">
                 {(gameState === 'result' || gameState === 'final_leaderboard') ? (
                   <>
-                    <h2 className="text-xl mb-4 border-b border-gray-600 pb-2 text-yellow-400 font-bold">
-                      🏆 {gameState === 'final_leaderboard' ? '最終總排行' : '全班排行榜'}
-                    </h2>
+                    <h2 className="text-xl mb-4 border-b border-gray-600 pb-2 text-yellow-400 font-bold">🏆 {gameState === 'final_leaderboard' ? '最終總排行' : '全班排行榜'}</h2>
                     <div className="flex flex-col gap-2">
                       {leaderboardData.map((p, i) => (
                         <div key={i} className="bg-gray-900 px-4 py-3 rounded flex justify-between items-center border border-[#00FF41]/30">
-                          <div className="flex items-center gap-3">
-                            <span className="text-gray-400 font-bold w-6">{i + 1}.</span>
-                            <span className="text-lg text-white">{p.name}</span>
-                          </div>
+                          <div className="flex items-center gap-3"><span className="text-gray-400 font-bold w-6">{i + 1}.</span><span className="text-lg text-white">{p.name}</span></div>
                           <div className="text-right">
                              <div className="text-xl text-yellow-400 font-bold">{p.score} 分</div>
                              {gameState === 'result' && <div className="text-xs text-gray-500">+{p.added_score} ({p.rank > 0 ? `第${p.rank}名` : p.time_taken+'s'})</div>}
@@ -370,44 +423,56 @@
                   <h2 className="text-xl mb-4 border-b border-gray-600 pb-2">全局控制</h2>
                   <div className="flex gap-4 flex-wrap items-center">
                     <button onClick={() => hostChangeState('waiting')} className="px-6 py-3 bg-blue-900/50 hover:bg-blue-900 border border-blue-500 rounded text-blue-100 transition">切換至等待大廳</button>
-                    <button onClick={() => hostChangeState('result')} className="px-6 py-3 bg-yellow-900/50 hover:bg-yellow-900 border border-yellow-500 rounded text-yellow-100 transition">強制進入結算 (提早收卷)</button>
-                    <button onClick={() => safeSend({ type: 'SHOW_FINAL_LEADERBOARD' })} className="px-6 py-3 bg-purple-900/50 hover:bg-purple-900 border border-purple-500 rounded text-purple-100 transition shadow-[0_0_10px_rgba(168,85,247,0.4)]">
-                      推送最終總排行 (Game Over)
-                    </button>
+                    <button onClick={() => hostChangeState('result')} className="px-6 py-3 bg-yellow-900/50 hover:bg-yellow-900 border border-yellow-500 rounded text-yellow-100 transition shadow-[0_0_8px_rgba(234,179,8,0.3)]">核對完畢/強制結算</button>
+                    <button onClick={() => safeSend({ type: 'SHOW_FINAL_LEADERBOARD' })} className="px-6 py-3 bg-purple-900/50 hover:bg-purple-900 border border-purple-500 rounded text-purple-100 transition shadow-[0_0_10px_rgba(168,85,247,0.4)]">推送最終總排行</button>
 
                     {gameState.startsWith('stage_') && gameState !== 'stage_2' && (
-                      <div className="ml-auto bg-red-950/50 border border-red-500 px-6 py-3 rounded text-red-500 font-bold text-xl flex items-center gap-2">
-                        ⏱️ {timeLeft}s
-                      </div>
+                      <div className="ml-auto bg-red-950/50 border border-red-500 px-6 py-3 rounded text-red-500 font-bold text-xl flex items-center gap-2">⏱️ {timeLeft}s</div>
                     )}
                   </div>
                 </div>
 
+                {gameState === 'stage_2' && (
+                  <div className="bg-gray-800 p-4 rounded-xl border-2 border-[#82b7d7] shadow-[0_0_15px_rgba(130,183,215,0.2)]">
+                     <h2 className="text-xl mb-3 font-bold text-[#82b7d7]">BINGO 抽號控制台</h2>
+                     <form onSubmit={(e) => { e.preventDefault(); hostCallNumber(); }} className="flex gap-3 items-center mb-4">
+                        <input type="number" min="1" max="16" value={callNumInput} onChange={(e)=>setCallNumInput(e.target.value)} placeholder="輸入抽出號碼 (1~16)" className="bg-black border border-[#82b7d7] text-[#82b7d7] p-2 rounded-lg text-lg w-56 text-center focus:outline-none" />
+                        <button type="submit" className="bg-[#82b7d7] text-black font-bold px-6 py-2 rounded-lg text-lg hover:opacity-90 active:scale-95">廣播發送</button>
+                     </form>
+                     <div className="flex flex-wrap gap-2 p-2 bg-black/40 rounded-lg min-h-[60px] max-h-32 overflow-y-auto">
+                        {calledNumbers.length === 0 && <span className="text-gray-500 text-sm mt-1 ml-1">尚未抽出任何號碼</span>}
+                        {calledNumbers.map((n, i) => (
+                           <div key={i} className="w-8 h-8 rounded-full bg-[#82b7d7] text-black font-bold flex items-center justify-center text-sm">{n}</div>
+                        ))}
+                     </div>
+                  </div>
+                )}
+
                 <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
-                  <h2 className="text-xl mb-4 border-b border-gray-600 pb-2">題庫發送區 (倒數完會自動結算)</h2>
+                  <h2 className="text-xl mb-4 border-b border-gray-600 pb-2">題庫發送區</h2>
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="p-4 bg-gray-900 border border-[#00FF41]/50 rounded-xl">
-                      <div className="text-[#00FF41] mb-2 font-bold">第一關: 數字獵人</div>
-                      <select className="w-full bg-black text-white p-2 rounded mb-3 border border-gray-600" onChange={(e) => setSelectedQ({...selectedQ, stage_1: parseInt(e.target.value)})}>
+                    <div className="p-4 bg-gray-900 border-2 border-[#889ed8]/60 rounded-xl shadow-[0_0_10px_rgba(136,158,216,0.1)]">
+                      <div className="text-[#889ed8] mb-2 font-bold text-lg">第一關: 數字獵人</div>
+                      <select className="w-full bg-black text-white p-2 rounded mb-3 border border-[#889ed8]/50" onChange={(e) => setSelectedQ({...selectedQ, stage_1: parseInt(e.target.value)})}>
                         {window.DB_STAGE_1?.map((q, i) => <option key={i} value={i}>第 {i+1} 題 ({q.time}s)</option>)}
                       </select>
-                      <button onClick={() => hostStartStage('stage_1', 'DB_STAGE_1')} className="w-full bg-green-700 hover:bg-green-600 text-white p-2 rounded font-bold transition">發送題目</button>
+                      <button onClick={() => hostStartStage('stage_1', 'DB_STAGE_1')} className="w-full bg-[#889ed8] hover:bg-[#889ed8]/80 text-black p-2 rounded font-bold transition">發送題目</button>
                     </div>
-                    <div className="p-4 bg-gray-900 border border-purple-500/50 rounded-xl">
-                      <div className="text-purple-400 mb-2 font-bold">第二關: 5x5 Bingo</div>
-                      <p className="text-xs text-gray-400 mb-4 h-12">無倒數計時，由主持人現場喊號，前四位連滿三條線者獲勝。滿四人自動結算。</p>
-                      <button onClick={() => hostStartStage('stage_2', '')} className="w-full bg-purple-700 hover:bg-purple-600 text-white p-2 rounded font-bold transition shadow-[0_0_10px_rgba(168,85,247,0.3)]">開始 Bingo</button>
+                    <div className="p-4 bg-gray-900 border-2 border-[#82b7d7]/60 rounded-xl shadow-[0_0_15px_rgba(130,183,215,0.15)] relative overflow-hidden">
+                      <div className="text-[#82b7d7] mb-2 font-bold text-lg">第二關: 4x4 BINGO</div>
+                      <p className="text-xs text-gray-400 mb-4 h-12">無倒數，由上方控制台開獎，自動判定滿三條線即廣播獲勝！</p>
+                      <button onClick={() => hostStartStage('stage_2', '')} className="w-full bg-[#82b7d7] hover:bg-[#82b7d7]/80 text-black p-2 rounded font-bold transition shadow-[0_0_10px_rgba(130,183,215,0.3)]">發送 BINGO 卡</button>
                     </div>
-                    <div className="p-4 bg-gray-900 border border-gray-700 rounded-xl opacity-50 cursor-not-allowed">
-                      <div className="text-gray-400 mb-2 font-bold">第三關: 數學怪物 (維護中)</div>
-                      <button disabled className="w-full bg-gray-700 text-gray-500 p-2 rounded font-bold mt-10">暫時停用</button>
-                    </div>
-                    <div className="p-4 bg-gray-900 border border-red-500/50 rounded-xl">
-                      <div className="text-red-400 mb-2 font-bold">第四關: 數學偵探</div>
-                      <select className="w-full bg-black text-white p-2 rounded mb-3 border border-gray-600" onChange={(e) => setSelectedQ({...selectedQ, stage_4: parseInt(e.target.value)})}>
-                        {window.DB_STAGE_4?.map((q, i) => <option key={i} value={i}>謎題 {i+1} ({q.time}s)</option>)}
+                    <div className="p-4 bg-gray-900 border-2 border-[#7cd0d7]/60 rounded-xl shadow-[0_0_10px_rgba(124,208,215,0.1)]">
+                      <div className="text-[#7cd0d7] mb-2 font-bold text-lg">第三關: 數學偵探</div>
+                      <select className="w-full bg-black text-white p-2 rounded mb-3 border border-[#7cd0d7]/50" onChange={(e) => setSelectedQ({...selectedQ, stage_3: parseInt(e.target.value)})}>
+                        {window.DB_STAGE_3?.map((q, i) => <option key={i} value={i}>謎題 {i+1} ({q.time}s)</option>)}
                       </select>
-                      <button onClick={() => hostStartStage('stage_4', 'DB_STAGE_4')} className="w-full bg-red-700 hover:bg-red-600 text-white p-2 rounded font-bold transition">發送偵探謎題</button>
+                      <button onClick={() => hostStartStage('stage_3', 'DB_STAGE_3')} className="w-full bg-[#7cd0d7] hover:bg-[#7cd0d7]/80 text-black p-2 rounded font-bold transition">發送偵探謎題</button>
+                    </div>
+                    <div className="p-4 bg-gray-900 border-2 border-[#76e9d6]/30 rounded-xl opacity-50 cursor-not-allowed">
+                      <div className="text-[#76e9d6] mb-2 font-bold text-lg">第四關: 數學怪物 (維護)</div>
+                      <button disabled className="w-full bg-gray-700 text-gray-500 p-2 rounded font-bold mt-10">暫時停用</button>
                     </div>
                   </div>
                 </div>
@@ -418,14 +483,14 @@
       }
 
       // ==========================================
-      // 2. 大螢幕專用畫面 (Display UI) 🌟 已修復手機版自適應
+      // 2. 大螢幕專用畫面 (Display UI)
       // ==========================================
       if (isDisplay) {
         return (
           <div className="min-h-screen bg-[#0A0A0A] text-[#00FF41] font-mono relative overflow-hidden flex flex-col p-4 md:p-8">
             <MathCanvasBackground />
+            <GlobalBingoAlert />
 
-            {/* 斷線提示 */}
             {isReconnecting && (
               <div className="absolute top-0 left-0 w-full bg-red-600/90 text-white text-center py-2 md:py-4 z-50 animate-pulse text-lg md:text-2xl font-bold shadow-[0_0_20px_rgba(220,38,38,0.5)]">
                 ⚠️ 大螢幕失去連線，系統正在背景自動重新連線中...
@@ -433,8 +498,8 @@
             )}
 
             <div className="relative z-10 w-full max-w-7xl mx-auto flex flex-col h-full">
-              <header className="border-b-2 border-[#00FF41]/50 pb-4 md:pb-6 mb-6 md:mb-10 flex flex-col md:flex-row justify-between items-center md:items-end gap-4">
-                <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold tracking-widest drop-shadow-[0_0_15px_#00FF41] border-2 border-[#00FF41] px-4 py-2 md:px-8 md:py-3 rounded-2xl bg-black/50 shadow-[0_0_20px_rgba(0,255,65,0.3)] text-center">
+              <header className="border-b-2 border-[#00FF41]/50 pb-4 md:pb-6 mb-4 md:mb-8 flex flex-col md:flex-row justify-between items-center md:items-end gap-4">
+                <h1 className="text-2xl md:text-4xl lg:text-5xl font-bold tracking-widest drop-shadow-[0_0_15px_#00FF41] border-2 border-[#00FF41] px-4 py-2 md:px-8 md:py-3 rounded-2xl bg-black/50 shadow-[0_0_20px_rgba(0,255,65,0.3)] text-center flex items-center justify-center gap-4">
                   MATH_MONSTER LIVE
                 </h1>
                 <div className="text-lg md:text-2xl flex items-center gap-2 md:gap-3 bg-black/50 px-4 py-1 md:px-6 md:py-2 rounded-full border border-[#00FF41]/50">
@@ -443,17 +508,28 @@
                 </div>
               </header>
 
-              <div className="flex-1 flex flex-col items-center justify-center">
+              {gameState === 'stage_2' && calledNumbers.length > 0 && (
+                <div className="w-full bg-black/80 border-y-4 border-yellow-400 py-4 md:py-6 mb-6 overflow-hidden relative shadow-[0_0_30px_rgba(250,204,21,0.2)]">
+                  <div className="text-center text-yellow-400 font-black text-2xl md:text-4xl mb-4 tracking-widest drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]">📢 本局開出號碼</div>
+                  <div className="flex justify-center flex-wrap gap-4 px-10">
+                    {calledNumbers.map((n, i) => (
+                      <div key={i} className="lotto-ball w-16 h-16 md:w-20 md:h-20 rounded-full bg-gradient-to-br from-yellow-100 to-yellow-400 text-black font-black text-3xl md:text-5xl flex items-center justify-center shadow-[0_0_20px_#facc15] border-2 border-white">
+                        {n}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-                {/* 等待大廳 */}
+              <div className="flex-1 flex flex-col items-center justify-center w-full">
+
                 {(gameState === 'login' || gameState === 'waiting') && (
                   <div className="text-center w-full">
                     <h2 className="text-3xl md:text-5xl lg:text-7xl font-bold mb-8 md:mb-12 animate-pulse drop-shadow-[0_0_15px_#00FF41]">等待任務發送...</h2>
 
-                    {/* 🌟 QR Code 與加入提示 */}
                     <div className="flex flex-col items-center justify-center mb-8 md:mb-10">
                       <p className="text-gray-300 text-xl md:text-3xl lg:text-4xl font-bold whitespace-nowrap mb-4 md:mb-6">掃描 QR Code 或輸入網址加入遊戲</p>
-                      <img src="./login_qrcode.png" alt="Join QR Code" className="w-40 h-40 md:w-64 md:h-64 object-contain bg-white p-2 rounded-xl border-4 border-[#00FF41] shadow-[0_0_20px_rgba(0,255,65,0.4)]" />
+                      <img src="./image_f98f3e.png" alt="Join QR Code" className="w-40 h-40 md:w-64 md:h-64 object-contain bg-white p-2 rounded-xl border-4 border-[#00FF41] shadow-[0_0_20px_rgba(0,255,65,0.4)]" />
                     </div>
 
                     <div className="flex flex-wrap justify-center gap-4 md:gap-6 max-w-6xl mx-auto">
@@ -467,23 +543,34 @@
                   </div>
                 )}
 
-                {/* 遊戲進行中 */}
-                {gameState.startsWith('stage_') && (
-                  <div className="text-center w-full max-w-6xl bg-black/70 p-6 md:p-12 lg:p-20 rounded-3xl border-2 border-[#00FF41]/50 shadow-[0_0_50px_rgba(0,255,65,0.2)] backdrop-blur-sm mx-auto">
-                    {gameState !== 'stage_2' && (
-                      <div className="text-6xl md:text-8xl lg:text-[120px] font-bold text-red-500 mb-8 md:mb-12 drop-shadow-[0_0_30px_rgba(239,68,68,0.8)] tabular-nums">
-                        ⏱️ {timeLeft}s
-                      </div>
-                    )}
-                    {gameState === 'stage_2' && (
-                       <div className="text-4xl md:text-6xl lg:text-8xl font-bold text-yellow-400 mb-8 md:mb-12 drop-shadow-[0_0_20px_rgba(250,204,21,0.5)] animate-pulse">
-                         5x5 BINGO 進行中
-                       </div>
-                    )}
-                    <div className="text-3xl md:text-5xl lg:text-7xl text-white leading-relaxed font-bold tracking-wide">
-                      {currentQuestionData?.text}
+                {/* 🌟 大螢幕連線進度 (移除動畫) */}
+                {gameState === 'stage_2' && (
+                  <div className="w-full flex-1 overflow-y-auto">
+                    <div className="flex flex-wrap justify-center gap-4 px-4 max-w-6xl mx-auto mt-4">
+                      {players.map((p, i) => {
+                         const lines = playerLinesMap[p] || 0;
+                         const isBingo = lines >= 3;
+                         return (
+                           <div key={i} className={`px-4 py-2 md:px-6 md:py-3 text-lg md:text-2xl lg:text-3xl bg-black/60 border-2 ${isBingo ? 'border-yellow-400 shadow-[0_0_20px_#facc15] scale-110' : 'border-[#00FF41]'} rounded-full text-white flex items-center gap-3 transition-all duration-300`}>
+                             <div className={`w-3 h-3 md:w-4 md:h-4 ${isBingo ? 'bg-yellow-400' : 'bg-[#00FF41]'} rounded-full`}></div>
+                             <span>{p}</span>
+                             <span className="text-yellow-400 font-bold ml-2">{lines} 條</span>
+                           </div>
+                         );
+                      })}
                     </div>
-                    {/* 顯示選擇題的選項 */}
+                  </div>
+                )}
+
+                {gameState.startsWith('stage_') && gameState !== 'stage_2' && (
+                  <div className="text-center w-full max-w-6xl bg-black/70 p-6 md:p-12 lg:p-20 rounded-3xl border-2 border-[#00FF41]/50 shadow-[0_0_50px_rgba(0,255,65,0.2)] backdrop-blur-sm mx-auto">
+                    <div className="text-6xl md:text-8xl lg:text-[120px] font-bold text-red-500 mb-8 md:mb-12 drop-shadow-[0_0_30px_rgba(239,68,68,0.8)] tabular-nums">
+                      ⏱️ {timeLeft}s
+                    </div>
+
+                    <div className="text-3xl md:text-5xl lg:text-7xl text-white leading-relaxed font-bold tracking-wide">
+                      {renderQuestionText(currentQuestionData?.text)}
+                    </div>
                     {currentQuestionData?.options && (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 mt-10 md:mt-16 w-full max-w-4xl mx-auto">
                         {currentQuestionData.options.map((opt, idx) => (
@@ -496,7 +583,6 @@
                   </div>
                 )}
 
-                {/* 單局結算排行榜 */}
                 {gameState === 'result' && (
                   <div className="w-full max-w-4xl bg-black/80 p-6 md:p-10 lg:p-14 rounded-3xl border-2 border-[#00FF41] shadow-[0_0_50px_rgba(0,255,65,0.3)] backdrop-blur-md mx-auto">
                     <h2 className="text-3xl md:text-5xl lg:text-6xl font-bold text-center mb-8 md:mb-12 text-white drop-shadow-[0_0_10px_#00FF41]">🏆 回合排行榜 🏆</h2>
@@ -526,7 +612,6 @@
                   </div>
                 )}
 
-                {/* 最終榮譽榜 */}
                 {gameState === 'final_leaderboard' && (
                   <div className="w-full max-w-5xl bg-black/90 p-6 md:p-12 lg:p-16 rounded-3xl border-4 border-yellow-500 shadow-[0_0_80px_rgba(250,204,21,0.5)] mx-auto">
                      <h2 className="text-4xl md:text-6xl lg:text-8xl font-bold text-center mb-10 md:mb-16 text-yellow-400 animate-pulse drop-shadow-[0_0_20px_rgba(250,204,21,0.8)]">🏆 最終榮譽榜 🏆</h2>
@@ -556,7 +641,7 @@
       }
 
       // ==========================================
-      // 3. 玩家前端遊戲作答區 (Player UI)
+      // 3. 玩家前端遊戲作答區 (Player UI) - 🌟 Banner 與關卡顏色統一更新
       // ==========================================
       const renderStageContent = () => {
         if (isSubmittedRef.current && gameState !== 'stage_2') {
@@ -572,8 +657,7 @@
             return (
               <div className="my-auto space-y-4 w-full">
                 <div className="bg-[#00FF41]/5 p-6 md:p-8 rounded-2xl border-2 border-[#00FF41]/30 text-xl md:text-3xl text-center shadow-inner relative">
-                  <div className="absolute top-2 left-3 text-xs text-[#00FF41]/30">STAGE_01: SPEED_HUNT</div>
-                  請在時間內找到：<br/><span className="text-white font-bold mt-4 inline-block">{currentQuestionData?.text}</span>
+                  請在時間內找到：<br/><span className="text-white font-bold mt-4 inline-block">{renderQuestionText(currentQuestionData?.text)}</span>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 md:gap-4 w-full">
@@ -593,43 +677,44 @@
 
           case 'stage_2':
             return (
-              <div className="my-auto space-y-2 md:space-y-4 flex flex-col items-center w-full">
-                <div className="bg-[#00FF41]/5 p-3 w-full rounded-2xl border-2 border-[#00FF41]/30 text-lg md:text-xl text-center shadow-inner relative">
-                  <div className="absolute top-2 left-3 text-xs text-[#00FF41]/30">STAGE_02: 5x5 BINGO</div>
-                  <span className="text-yellow-400 font-bold">請聽主持人喊號碼圈選</span><br/>
-                  <span className="text-sm text-gray-400">(連滿 3 條線才能送出)</span>
+              <div className="flex flex-col h-full items-center justify-center space-y-3 md:space-y-6 w-full">
+                <div className="bg-[#00FF41]/5 p-2 md:p-4 w-full rounded-2xl border-2 border-[#00FF41]/30 text-lg md:text-2xl text-center shadow-inner relative">
+                  <span className="text-[#00FF41] font-bold">請聽主持人喊號碼圈選</span>
                 </div>
 
-                <div className="grid grid-cols-5 gap-1 md:gap-2 w-full max-w-[380px]">
+                <div className="grid grid-cols-4 gap-2 md:gap-3 w-full max-w-[360px]">
                   {bingoGrid.map((item, i) => (
                     <button key={i} onClick={() => handleBingoClick(i)}
-                      className={`aspect-square text-xl md:text-3xl font-bold rounded-lg border-2 flex items-center justify-center transition-all
-                      ${item.selected ? 'bg-[#00FF41] text-black border-[#00FF41] shadow-[0_0_10px_rgba(0,255,65,0.8)]' : 'bg-black text-[#00FF41] border-[#00FF41]/50 hover:bg-[#00FF41]/20'}`}>
+                      className={`aspect-square text-2xl md:text-4xl font-bold rounded-lg border-2 flex items-center justify-center transition-all
+                      ${item.selected ? 'bg-yellow-400 text-black border-white shadow-[0_0_15px_rgba(250,204,21,0.8)]' : 'bg-black text-[#00FF41] border-[#00FF41]/50 hover:bg-[#00FF41]/20'}`}>
                       {item.num}
                     </button>
                   ))}
                 </div>
 
-                <div className="text-white text-lg mt-2">目前連線: <span className="text-yellow-400 font-bold">{bingoLines}</span> 條 / 目標: 3 條</div>
+                <div className="text-white text-lg md:text-xl">目前連線: <span className="text-yellow-400 font-bold text-2xl md:text-3xl mx-2">{bingoLines}</span> 條 / 目標: 3 條</div>
 
-                <button onClick={submitAnswerToBackend} disabled={bingoLines < 3 || isSubmittedRef.current}
-                  className={`w-full font-bold text-xl md:text-2xl p-4 rounded-xl mt-2 transition-all
-                  ${isSubmittedRef.current ? 'bg-gray-600 text-gray-300 border border-gray-700' : bingoLines >= 3 ? 'bg-[#00FF41] text-black active:scale-95 animate-pulse' : 'bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed'}`}>
-                  {isSubmittedRef.current ? '已成功宣告！等待結算...' : bingoLines >= 3 ? '宣佈連線 (BINGO!)' : '未達 3 條連線'}
-                </button>
+                {isSubmittedRef.current ? (
+                  <div className="w-full text-center p-3 md:p-4 rounded-xl bg-yellow-500/20 border-2 border-yellow-400 text-yellow-400 font-bold animate-pulse text-lg md:text-xl shadow-[0_0_15px_rgba(250,204,21,0.5)]">
+                    🎉 BINGO！請向主持人出示此畫面 🎉
+                  </div>
+                ) : (
+                  <div className="w-full text-center p-3 md:p-4 rounded-xl bg-gray-800 text-gray-500 border border-gray-700 font-bold text-lg">
+                     未達 3 條連線
+                  </div>
+                )}
               </div>
             );
 
-          case 'stage_4':
+          case 'stage_3':
             return (
               <form onSubmit={submitAnswerToBackend} className="my-auto space-y-5 w-full">
                 <div className="bg-[#00FF41]/5 p-8 rounded-2xl border-2 border-[#00FF41]/30 text-2xl md:text-4xl text-center shadow-inner relative">
-                  <div className="absolute top-2 left-3 text-xs text-[#00FF41]/30">STAGE_04: DETECTIVE</div>
                   解析以下加密序列：<br/>
-                  <div className="text-yellow-400 font-bold mt-4 tracking-widest drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]">{currentQuestionData?.text}</div>
+                  <div className="text-yellow-400 font-bold mt-4 tracking-widest drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]">{renderQuestionText(currentQuestionData?.text)}</div>
                 </div>
-                <input type="text" value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="輸入破解數字..." className="w-full bg-black/50 border-2 border-[#00FF41] rounded-xl p-6 text-center text-3xl outline-none focus:bg-[#00FF41]/10" />
-                <button type="submit" className="w-full bg-[#00FF41] text-black font-bold text-2xl p-6 rounded-xl active:scale-95">送出</button>
+                <input type="text" value={answer} onChange={(e) => setAnswer(e.target.value)} placeholder="輸入破解數字..." className="w-full bg-black/50 border-2 border-[#00FF41] rounded-xl p-6 text-center text-3xl outline-none focus:bg-[#00FF41]/20 focus:text-white" />
+                <button type="submit" className="w-full bg-[#00FF41] text-black font-bold text-2xl p-6 rounded-xl active:scale-95 shadow-[0_0_15px_rgba(0,255,65,0.3)]">送出</button>
               </form>
             );
           default: return null;
@@ -639,6 +724,7 @@
       return (
         <div className="min-h-[100dvh] w-full bg-[#0A0A0A] text-[#00FF41] font-mono relative overflow-hidden flex items-center justify-center p-2 md:p-4">
           <MathCanvasBackground />
+          <GlobalBingoAlert />
 
           {isReconnecting && (
             <div className="absolute top-0 left-0 w-full bg-red-600/90 text-white text-center py-2 z-50 animate-pulse text-sm md:text-base font-bold shadow-[0_0_15px_rgba(220,38,38,0.5)]">
@@ -647,15 +733,28 @@
           )}
 
           <div className="relative z-10 w-full max-w-[430px] md:max-w-3xl lg:max-w-4xl h-[95dvh] md:h-[85vh] bg-black/85 md:border md:border-[#00FF41]/30 md:rounded-2xl flex flex-col shadow-[0_0_40px_rgba(0,255,65,0.15)] backdrop-blur-[2px]">
-            <div className="flex items-center justify-between p-4 border-b border-[#00FF41]/30 bg-black/50 md:rounded-t-2xl relative z-20 shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="font-bold tracking-widest text-lg md:text-2xl drop-shadow-[0_0_5px_#00FF41]">&gt;_ MATH_MONSTER</span>
-                <div className={`w-3 h-3 rounded-full ml-2 ${isConnected ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-red-500 shadow-[0_0_8px_#ef4444] animate-pulse'}`} title={isConnected ? '已連線' : '斷線'}></div>
+
+            {/* 🌟 玩家畫面上方 Banner：自適應縮小排列，整合了關卡名稱 */}
+            <div className="flex flex-wrap items-center justify-between p-3 md:p-4 border-b border-[#00FF41]/30 bg-black/50 md:rounded-t-2xl relative z-20 shrink-0 gap-y-2">
+              <div className="flex items-center gap-1 md:gap-2">
+                <span className="font-bold tracking-widest text-sm md:text-xl drop-shadow-[0_0_5px_#00FF41] flex items-center flex-wrap">
+                  MATH_MONSTER LIVE
+                  {gameState.startsWith('stage_') && (
+                    <span className="text-[#00FF41]/70 text-xs md:text-lg ml-1 md:ml-2">
+                      | {gameState === 'stage_1' ? 'STAGE_01: SPEED_HUNT' :
+                         gameState === 'stage_2' ? 'STAGE_02: BINGO' :
+                         gameState === 'stage_3' ? 'STAGE_03: DETECTIVE' :
+                         gameState === 'stage_4' ? 'STAGE_04: MONSTER' : ''}
+                    </span>
+                  )}
+                </span>
+                <div className={`w-2 h-2 md:w-3 md:h-3 rounded-full ml-1 md:ml-2 shrink-0 ${isConnected ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-red-500 animate-pulse'}`} title={isConnected ? '已連線' : '斷線'}></div>
               </div>
+
               {gameState !== 'login' && (
-                <div className="flex gap-2 md:gap-4 items-center bg-black/50 px-3 py-1 rounded-full border border-[#00FF41]/20">
+                <div className="flex gap-2 items-center bg-black/50 px-2 py-1 md:px-3 md:py-1 rounded-full border border-[#00FF41]/20 text-xs md:text-base">
                   <span className="text-[#00FF41]/90 whitespace-nowrap">{nickname}</span>
-                  <div className="h-4 w-[1px] bg-[#00FF41]/20"></div>
+                  <div className="h-3 md:h-4 w-[1px] bg-[#00FF41]/20"></div>
                   <span className="text-yellow-400 font-bold whitespace-nowrap">🏆 {myScore}</span>
                 </div>
               )}
@@ -678,7 +777,7 @@
 
               {gameState === 'waiting' && (
                 <div className="text-center space-y-10 w-full max-w-2xl mx-auto my-auto py-8">
-                  <h2 className="text-3xl md:text-5xl font-bold leading-tight animate-pulse">等待主機發送任務...</h2>
+                  <h2 className="text-3xl md:text-5xl font-bold leading-tight animate-pulse">等待任務發送...</h2>
                   <div className="bg-[#00FF41]/10 p-8 rounded-2xl border border-[#00FF41]/30">
                     <p className="text-[#00FF41]/80 text-xl">請觀看現場大螢幕或等待主持人指示</p>
                   </div>
@@ -739,7 +838,8 @@
                     <p className="text-lg md:text-xl text-white mb-2">🏆 你的總積分：<span className="text-3xl font-bold text-yellow-400">{myScore}</span></p>
 
                     <div className="mt-4 text-left">
-                       <p className="text-[#00FF41]/80 text-sm mb-2 border-b border-[#00FF41]/30 pb-1">全班排行榜 (Top 5)</p>
+                       {/* 🌟 修正了名稱 */}
+                       <p className="text-[#00FF41]/80 text-sm mb-2 border-b border-[#00FF41]/30 pb-1">排行榜 Top 5</p>
                        <div className="space-y-2">
                          {leaderboardData.slice(0, 5).map((p, i) => (
                            <div key={i} className="flex justify-between items-center text-sm md:text-base bg-[#00FF41]/5 p-2 rounded border border-[#00FF41]/20">

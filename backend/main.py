@@ -127,7 +127,6 @@ async def websocket_endpoint(websocket: WebSocket):
                     "called_numbers": manager.called_numbers
                 })
 
-            # 新增：接收並廣播玩家的連線條數 (聽牌狀態)
             elif action_type == "SYNC_BINGO_LINES":
                 name = message.get("name")
                 lines = message.get("lines", 0)
@@ -196,7 +195,17 @@ async def websocket_endpoint(websocket: WebSocket):
                             p_state["score"] = round(p_state["score"] + 3, 1)
                             p_state["has_answered"] = True
                             p_state["rank"] = 0
+                            p_state["last_answer"] = "未連線"
+                else:
+                    # 🌟 確保強制收卷時，沒作答的玩家被正確標記為「未作答」
+                    for p_name, p_state in manager.players_state.items():
+                        if not p_state.get("has_answered"):
+                            p_state["last_answer"] = "未作答"
+                            p_state["has_answered"] = True
+                            p_state["is_correct"] = False
+                            p_state["round_added_score"] = 0
 
+                # 將玩家的 last_answer 包入排行榜資料中傳給前端
                 leaderboard = [
                     {
                         "name": k,
@@ -204,7 +213,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         "added_score": v.get("round_added_score", 0),
                         "time_taken": v.get("round_time_taken", 0),
                         "is_correct": v.get("is_correct", False),
-                        "rank": v.get("rank", -1)
+                        "rank": v.get("rank", -1),
+                        "last_answer": v.get("last_answer", "")
                     }
                     for k, v in manager.players_state.items()
                 ]

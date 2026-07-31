@@ -23,6 +23,27 @@
       100% { transform: scale(1) translateY(0); opacity: 1; }
     }
     .lotto-ball { animation: popIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+
+    /* 自訂音量滑桿樣式 */
+    input[type=range] {
+      -webkit-appearance: none;
+      background: transparent;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 16px; width: 16px;
+      border-radius: 50%;
+      background: #e6b800;
+      cursor: pointer;
+      margin-top: -6px;
+      box-shadow: 0 0 5px rgba(230,184,0,0.8);
+    }
+    input[type=range]::-webkit-slider-runnable-track {
+      width: 100%; height: 4px;
+      cursor: pointer;
+      background: #4b5563;
+      border-radius: 2px;
+    }
   </style>
 </head>
 <body>
@@ -102,17 +123,19 @@
       const [myTimeTaken, setMyTimeTaken] = useState(0);
       const [amICorrect, setAmICorrect] = useState(false);
       const [myRank, setMyRank] = useState(-1);
-      const [myLastAnswer, setMyLastAnswer] = useState(''); // 🌟 紀錄玩家自己最後送出的答案
+      const [myLastAnswer, setMyLastAnswer] = useState('');
 
       // --- 🎵 音樂播放控制系統 ---
       const audioRef = useRef(null);
       const [currentTrack, setCurrentTrack] = useState(null);
       const [isPlaying, setIsPlaying] = useState(false);
+      const [volume, setVolume] = useState(0.5); // 🌟 新增：音量狀態，預設 50%
 
       useEffect(() => {
         if (isHost) {
           audioRef.current = new Audio();
           audioRef.current.loop = true;
+          audioRef.current.volume = volume; // 初始化音量
           audioRef.current.onplay = () => setIsPlaying(true);
           audioRef.current.onpause = () => setIsPlaying(false);
         }
@@ -123,6 +146,13 @@
           }
         };
       }, [isHost]);
+
+      // 🌟 監聽音量改變並即時更新
+      useEffect(() => {
+        if (audioRef.current) {
+          audioRef.current.volume = volume;
+        }
+      }, [volume]);
 
       const bgmTracks = [
         { id: 'bgm1', name: '🎵 歡樂等待大廳', file: './bgm1.mp3', color: 'bg-green-700/60 hover:bg-green-600' },
@@ -245,7 +275,7 @@
                     setMyTimeTaken(myData.time_taken);
                     setAmICorrect(myData.is_correct);
                     setMyRank(myData.rank);
-                    setMyLastAnswer(myData.last_answer); // 🌟 接收最後的答案
+                    setMyLastAnswer(myData.last_answer);
                   }
                 }
                 if (data.state === 'final_leaderboard' && data.leaderboard) {
@@ -482,9 +512,21 @@
                       </button>
                     ))}
                   </div>
-                  <div className="mt-3 flex justify-between items-center border-t border-gray-700 pt-3">
-                    <span className="text-xs text-gray-400">目前裝置輸出，自動循環</span>
-                    <button onClick={stopMusic} disabled={!currentTrack} className={`px-4 py-2 rounded font-bold text-sm transition ${currentTrack ? 'bg-red-800 hover:bg-red-700 text-white shadow-[0_0_8px_#ef4444]' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}>
+                  {/* 🌟 漸進式音量拉桿區塊 */}
+                  <div className="mt-3 flex flex-col md:flex-row justify-between items-center border-t border-gray-700 pt-3 gap-3">
+                    <div className="flex items-center gap-2 w-full md:w-auto">
+                       <span className="text-sm text-gray-300">🔊 音量</span>
+                       <input
+                         type="range"
+                         min="0" max="1" step="0.01"
+                         value={volume}
+                         onChange={(e) => setVolume(parseFloat(e.target.value))}
+                         className="w-full md:w-28 cursor-pointer"
+                       />
+                       <span className="text-xs text-yellow-400 w-8">{(volume * 100).toFixed(0)}%</span>
+                    </div>
+                    <span className="text-xs text-gray-400 hidden lg:inline">目前裝置輸出，自動循環</span>
+                    <button onClick={stopMusic} disabled={!currentTrack} className={`px-4 py-2 rounded font-bold text-sm transition w-full md:w-auto ${currentTrack ? 'bg-red-800 hover:bg-red-700 text-white shadow-[0_0_8px_#ef4444]' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}>
                       ⏹ 停止音樂
                     </button>
                   </div>
@@ -807,7 +849,6 @@
 
           <div className="relative z-10 w-full max-w-[430px] md:max-w-3xl lg:max-w-4xl h-[95dvh] md:h-[85vh] bg-black/85 md:border md:border-[#00FF41]/30 md:rounded-2xl flex flex-col shadow-[0_0_40px_rgba(0,255,65,0.15)] backdrop-blur-[2px]">
 
-            {/* 🌟 玩家畫面上方 Banner：自適應縮小排列，整合了關卡名稱 */}
             <div className="flex flex-wrap items-center justify-between p-3 md:p-4 border-b border-[#00FF41]/30 bg-black/50 md:rounded-t-2xl relative z-20 shrink-0 gap-y-2">
               <div className="flex items-center gap-1 md:gap-2 flex-1 min-w-[200px]">
                 <span className="font-bold tracking-widest text-sm md:text-xl drop-shadow-[0_0_5px_#00FF41] flex items-center flex-wrap shrink-0">
@@ -903,12 +944,10 @@
                           </p>
                         </div>
                       ) : myLastAnswer === '未作答' ? (
-                        // 🌟 專屬的「未作答 / 時間到」UI，不再顯示 ❌ 答案錯誤
                         <div className="space-y-2 flex flex-col items-center py-4">
                           <p className="text-3xl md:text-4xl text-gray-400 font-bold">⏳ 時間到 / 未作答</p>
                         </div>
                       ) : (
-                        // 🌟 明確標示「答案錯誤」，並顯示玩家的錯誤答案
                         <div className="space-y-3 flex flex-col items-center py-4">
                           <p className="text-3xl md:text-4xl text-red-500 font-bold">❌ 答案錯誤</p>
                           <div className="flex justify-center items-center gap-2 text-white text-lg bg-red-500/20 w-fit px-4 py-2 rounded-full border border-red-500/50">
@@ -928,9 +967,9 @@
                            <div key={i} className="flex justify-between items-center text-sm md:text-base bg-[#00FF41]/5 p-2 rounded border border-[#00FF41]/20">
                              <div className="flex gap-2 items-center">
                                <span className="text-gray-400 w-4 font-bold">{i + 1}.</span>
-                               <span className={p.name === nicknameRef.current ? "text-yellow-400 font-bold" : "text-white"}>{p.name}</span>
+                               <span className="text-white truncate max-w-[100px] md:max-w-[200px]">{p.name}</span>
                              </div>
-                             <span className="text-yellow-400 font-bold">{p.score} 分</span>
+                             <span className="text-yellow-400 font-bold whitespace-nowrap">{p.score} 分</span>
                            </div>
                          ))}
                        </div>
@@ -956,9 +995,9 @@
                             <span className="w-8 text-center text-3xl">
                               {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="text-lg text-gray-500">{i + 1}.</span>}
                             </span>
-                            <span className={p.name === nicknameRef.current ? "underline decoration-[#00FF41] underline-offset-4" : ""}>{p.name}</span>
+                            <span className="truncate max-w-[120px] md:max-w-[250px]">{p.name}</span>
                           </div>
-                          <span className="tracking-wider">{p.score} 分</span>
+                          <span className="tracking-wider whitespace-nowrap">{p.score} 分</span>
                         </div>
                       ))}
                     </div>

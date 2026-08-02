@@ -129,13 +129,13 @@
       const audioRef = useRef(null);
       const [currentTrack, setCurrentTrack] = useState(null);
       const [isPlaying, setIsPlaying] = useState(false);
-      const [volume, setVolume] = useState(0.5); // 🌟 新增：音量狀態，預設 50%
+      const [volume, setVolume] = useState(0.5);
 
       useEffect(() => {
         if (isHost) {
           audioRef.current = new Audio();
           audioRef.current.loop = true;
-          audioRef.current.volume = volume; // 初始化音量
+          audioRef.current.volume = volume;
           audioRef.current.onplay = () => setIsPlaying(true);
           audioRef.current.onpause = () => setIsPlaying(false);
         }
@@ -147,7 +147,6 @@
         };
       }, [isHost]);
 
-      // 🌟 監聽音量改變並即時更新
       useEffect(() => {
         if (audioRef.current) {
           audioRef.current.volume = volume;
@@ -439,23 +438,25 @@
       // ==========================================
       if (isHost) {
         return (
-          <div className="min-h-screen bg-gray-900 text-white p-6 font-mono overflow-y-auto relative">
+          // 🌟 修正：改用 h-[100dvh] 並加上底部 padding，讓外層成為獨立的滾動視窗
+          <div className="h-[100dvh] w-full bg-gray-900 text-white p-4 md:p-6 pb-24 font-mono overflow-y-auto relative">
             <GlobalBingoAlert />
-            <header className="border-b border-[#00FF41] pb-4 mb-6 flex justify-between items-center flex-wrap gap-4">
-              <div className="flex items-center gap-3">
-                <h1 className="text-3xl font-bold text-[#00FF41]">SYSTEM_HOST_DASHBOARD</h1>
-                <div className={`w-4 h-4 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></div>
+            <header className="border-b border-[#00FF41] pb-4 mb-4 md:mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="flex items-center gap-2 md:gap-3">
+                <h1 className="text-2xl md:text-3xl font-bold text-[#00FF41]">SYSTEM_HOST_DASHBOARD</h1>
+                <div className={`w-3 h-3 md:w-4 md:h-4 rounded-full shrink-0 ${isConnected ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`}></div>
               </div>
-              <div className="flex gap-2 items-center flex-wrap">
-                <div className="bg-gray-800 px-4 py-2 rounded">連線: <span className="text-[#00FF41] font-bold">{players.length}</span></div>
-                <button onClick={clearOfflinePlayers} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-500 rounded text-gray-200 transition text-sm">🧹 清除離線幽靈</button>
-                <button onClick={resetAllScores} className="px-4 py-2 bg-red-900/50 hover:bg-red-700 border border-red-500 rounded text-red-100 transition shadow-[0_0_8px_rgba(239,68,68,0.5)]">清除所有積分</button>
+              <div className="flex gap-2 items-center flex-wrap w-full md:w-auto">
+                <div className="bg-gray-800 px-3 py-1.5 md:px-4 md:py-2 rounded text-sm md:text-base">連線: <span className="text-[#00FF41] font-bold">{players.length}</span></div>
+                <button onClick={clearOfflinePlayers} className="px-3 py-1.5 md:px-4 md:py-2 bg-gray-700 hover:bg-gray-600 border border-gray-500 rounded text-gray-200 transition text-xs md:text-sm flex-1 md:flex-none">🧹 清除離線</button>
+                <button onClick={resetAllScores} className="px-3 py-1.5 md:px-4 md:py-2 bg-red-900/50 hover:bg-red-700 border border-red-500 rounded text-red-100 transition shadow-[0_0_8px_rgba(239,68,68,0.5)] text-xs md:text-sm flex-1 md:flex-none">清除所有積分</button>
               </div>
             </header>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-              <div className="flex flex-col gap-6 max-h-[80vh] overflow-y-auto">
+              {/* 🌟 手機版將左側面板限縮為 50vh，方便滑動 */}
+              <div className="flex flex-col gap-6 max-h-[50vh] md:max-h-[80vh] overflow-y-auto pr-2">
                 <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
                   {(gameState === 'result' || gameState === 'final_leaderboard') ? (
                     <>
@@ -512,7 +513,6 @@
                       </button>
                     ))}
                   </div>
-                  {/* 🌟 漸進式音量拉桿區塊 */}
                   <div className="mt-3 flex flex-col md:flex-row justify-between items-center border-t border-gray-700 pt-3 gap-3">
                     <div className="flex items-center gap-2 w-full md:w-auto">
                        <span className="text-sm text-gray-300">🔊 音量</span>
@@ -533,8 +533,8 @@
                 </div>
               </div>
 
-              <div className="md:col-span-2 space-y-6">
-                <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+              <div className="md:col-span-2 space-y-4 md:space-y-6">
+                <div className="bg-gray-800 p-4 md:p-6 rounded-xl border border-gray-700">
                   <h2 className="text-xl mb-4 border-b border-gray-600 pb-2">全局控制</h2>
                   <div className="flex gap-4 flex-wrap items-center">
                     <button onClick={() => hostChangeState('waiting')} className="px-6 py-3 bg-blue-900/50 hover:bg-blue-900 border border-blue-500 rounded text-blue-100 transition">切換至等待大廳</button>
@@ -550,9 +550,10 @@
                 {gameState === 'stage_2' && (
                   <div className="bg-gray-800 p-4 rounded-xl border-2 border-[#82b7d7] shadow-[0_0_15px_rgba(130,183,215,0.2)]">
                      <h2 className="text-xl mb-3 font-bold text-[#82b7d7]">BINGO 抽號控制台</h2>
-                     <form onSubmit={(e) => { e.preventDefault(); hostCallNumber(); }} className="flex gap-3 items-center mb-4">
-                        <input type="number" min="1" max="16" value={callNumInput} onChange={(e)=>setCallNumInput(e.target.value)} placeholder="輸入抽出號碼 (1~16)" className="bg-black border border-[#82b7d7] text-[#82b7d7] p-2 rounded-lg text-lg w-56 text-center focus:outline-none" />
-                        <button type="submit" className="bg-[#82b7d7] text-black font-bold px-6 py-2 rounded-lg text-lg hover:opacity-90 active:scale-95">廣播發送</button>
+                     {/* 🌟 修正 BINGO 輸入框在手機上的排版 */}
+                     <form onSubmit={(e) => { e.preventDefault(); hostCallNumber(); }} className="flex flex-col md:flex-row gap-3 items-center mb-4">
+                        <input type="number" min="1" max="16" value={callNumInput} onChange={(e)=>setCallNumInput(e.target.value)} placeholder="輸入抽出號碼 (1~16)" className="bg-black border border-[#82b7d7] text-[#82b7d7] p-2 rounded-lg text-lg w-full md:w-56 text-center focus:outline-none" />
+                        <button type="submit" className="bg-[#82b7d7] text-black font-bold px-6 py-2 rounded-lg text-lg hover:opacity-90 active:scale-95 w-full md:w-auto">廣播發送</button>
                      </form>
                      <div className="flex flex-wrap gap-2 p-2 bg-black/40 rounded-lg min-h-[60px] max-h-32 overflow-y-auto">
                         {calledNumbers.length === 0 && <span className="text-gray-500 text-sm mt-1 ml-1">尚未抽出任何號碼</span>}
@@ -563,9 +564,9 @@
                   </div>
                 )}
 
-                <div className="bg-gray-800 p-6 rounded-xl border border-gray-700">
+                <div className="bg-gray-800 p-4 md:p-6 rounded-xl border border-gray-700">
                   <h2 className="text-xl mb-4 border-b border-gray-600 pb-2">題庫發送區</h2>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="p-4 bg-gray-900 border-2 border-[#889ed8]/60 rounded-xl shadow-[0_0_10px_rgba(136,158,216,0.1)]">
                       <div className="text-[#889ed8] mb-2 font-bold text-lg">第一關: 數字獵人</div>
                       <select className="w-full bg-black text-white p-2 rounded mb-3 border border-[#889ed8]/50" onChange={(e) => setSelectedQ({...selectedQ, stage_1: parseInt(e.target.value)})}>

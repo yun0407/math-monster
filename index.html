@@ -250,6 +250,10 @@
             if (isHost) {
               if (data.type === 'HOST_UPDATE') setHostPlayerDetails(data.player_details);
               if (data.type === 'CHANGE_STATE') {
+                // 🌟 當進入不需要倒數計時的頁面時，清除原本殘留的計時器
+                if (['result', 'waiting', 'final_leaderboard'].includes(data.state)) {
+                  if (window.gameTimer) clearInterval(window.gameTimer);
+                }
                 setGameState(data.state);
                 if ((data.state === 'result' || data.state === 'final_leaderboard') && data.leaderboard) setLeaderboardData(data.leaderboard);
               }
@@ -262,6 +266,10 @@
               }
             } else {
               if (data.type === 'CHANGE_STATE') {
+                // 🌟 當進入不需要倒數計時的頁面時，清除原本殘留的計時器
+                if (['result', 'waiting', 'final_leaderboard'].includes(data.state)) {
+                  if (window.gameTimer) clearInterval(window.gameTimer);
+                }
                 setGameState(data.state);
                 if (data.state === 'login') { setNickname(''); }
                 if (data.state === 'result' && data.leaderboard) {
@@ -1004,12 +1012,12 @@
                           ${i === 0 ? 'bg-yellow-500/20 border-yellow-400 text-yellow-400 font-bold scale-[1.02] md:scale-110 my-4 shadow-[0_0_15px_rgba(250,204,21,0.5)]' :
                             i === 1 ? 'bg-gray-300/10 border-gray-300 text-gray-200 font-bold' :
                             i === 2 ? 'bg-orange-400/10 border-orange-400 text-orange-300 font-bold' :
-                            'bg-[#00FF41]/10 border-[#00FF41]/30 text-white'}`}>
+                            'bg-[#00FF41]/5 border-[#00FF41]/20 text-white'}`}>
                           <div className="flex gap-4 items-center">
-                            <span className="w-10 md:w-16 text-center text-3xl md:text-5xl lg:text-6xl">
-                              {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="text-2xl md:text-4xl text-gray-500">{i + 1}.</span>}
+                            <span className="w-8 text-center text-3xl">
+                              {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : <span className="text-lg text-gray-500">{i + 1}.</span>}
                             </span>
-                            <span className="truncate max-w-[200px] md:max-w-[400px]">{p.name}</span>
+                            <span className="truncate max-w-[120px] md:max-w-[250px]">{p.name}</span>
                           </div>
                           <span className="tracking-wider whitespace-nowrap">{p.score} 分</span>
                         </div>

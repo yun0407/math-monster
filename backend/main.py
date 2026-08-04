@@ -187,6 +187,45 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     await manager.broadcast_host_update()
 
+                    # 🌟 [新增] 自動偵測：是否所有線上的玩家都作答了？
+                    if manager.current_stage != "stage_2":
+                        online_names = list(manager.active_connections.values())
+                        active_players = [n for n in online_names if n and n not in ["HOST", "DISPLAY"]]
+
+                        if len(active_players) > 0:
+                            all_answered = all(manager.players_state.get(p, {}).get("has_answered") for p in active_players)
+                            if all_answered:
+                                print("✅ 所有上線挑戰者皆已作答，提早收卷！")
+
+                                # 幫斷線或未作答的離線玩家補上狀態，避免資料缺失
+                                for p_name, p_state in manager.players_state.items():
+                                    if not p_state.get("has_answered"):
+                                        p_state["last_answer"] = "未作答"
+                                        p_state["has_answered"] = True
+                                        p_state["is_correct"] = False
+                                        p_state["round_added_score"] = 0
+
+                                leaderboard = [
+                                    {
+                                        "name": k,
+                                        "score": v["score"],
+                                        "added_score": v.get("round_added_score", 0),
+                                        "time_taken": v.get("round_time_taken", 0),
+                                        "is_correct": v.get("is_correct", False),
+                                        "rank": v.get("rank", -1),
+                                        "last_answer": v.get("last_answer", "")
+                                    }
+                                    for k, v in manager.players_state.items()
+                                ]
+                                leaderboard = sorted(leaderboard, key=lambda x: x["score"], reverse=True)
+
+                                await manager.broadcast({
+                                    "type": "CHANGE_STATE",
+                                    "state": "result",
+                                    "leaderboard": leaderboard,
+                                    "correct_answer": manager.current_correct_answer
+                                })
+
             elif action_type == "CHANGE_STATE" and message.get("state") == "result":
                 if manager.current_stage == "stage_2":
                     for p_name, p_state in manager.players_state.items():
@@ -197,7 +236,6 @@ async def websocket_endpoint(websocket: WebSocket):
                             p_state["rank"] = 0
                             p_state["last_answer"] = "未連線"
                 else:
-                    # 🌟 確保強制收卷時，沒作答的玩家被正確標記為「未作答」
                     for p_name, p_state in manager.players_state.items():
                         if not p_state.get("has_answered"):
                             p_state["last_answer"] = "未作答"
@@ -205,7 +243,6 @@ async def websocket_endpoint(websocket: WebSocket):
                             p_state["is_correct"] = False
                             p_state["round_added_score"] = 0
 
-                # 將玩家的 last_answer 包入排行榜資料中傳給前端
                 leaderboard = [
                     {
                         "name": k,

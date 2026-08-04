@@ -250,7 +250,6 @@
             if (isHost) {
               if (data.type === 'HOST_UPDATE') setHostPlayerDetails(data.player_details);
               if (data.type === 'CHANGE_STATE') {
-                // 🌟 當進入不需要倒數計時的頁面時，清除原本殘留的計時器
                 if (['result', 'waiting', 'final_leaderboard'].includes(data.state)) {
                   if (window.gameTimer) clearInterval(window.gameTimer);
                 }
@@ -266,7 +265,6 @@
               }
             } else {
               if (data.type === 'CHANGE_STATE') {
-                // 🌟 當進入不需要倒數計時的頁面時，清除原本殘留的計時器
                 if (['result', 'waiting', 'final_leaderboard'].includes(data.state)) {
                   if (window.gameTimer) clearInterval(window.gameTimer);
                 }
@@ -466,7 +464,7 @@
                 <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
                   {(gameState === 'result' || gameState === 'final_leaderboard') ? (
                     <>
-                      <h2 className="text-xl mb-4 border-b border-gray-600 pb-2 text-yellow-400 font-bold">🏆 {gameState === 'final_leaderboard' ? '最終總排行' : '排行榜 Top 5'}</h2>
+                      <h2 className="text-xl mb-4 border-b border-gray-600 pb-2 text-yellow-400 font-bold">🏆 {gameState === 'final_leaderboard' ? '最終總排行' : '完整排行榜'}</h2>
                       <div className="flex flex-col gap-2">
                         {leaderboardData.map((p, i) => (
                           <div key={i} className="bg-gray-900 px-4 py-3 rounded flex justify-between items-center border border-[#00FF41]/30">
@@ -717,7 +715,6 @@
                           <p className="text-[#00FF41] text-xl md:text-2xl lg:text-3xl mb-3 md:mb-4">本題正確答案</p>
                           <p className="text-3xl md:text-5xl lg:text-7xl text-white font-bold bg-[#00FF41]/20 inline-block px-6 py-3 md:px-10 md:py-4 rounded-3xl border border-[#00FF41]/50">{correctAnswer}</p>
 
-                          {/* 🌟 大螢幕顯示詳解 */}
                           {currentQuestionData?.explanation && (
                             <div className="mt-6 md:mt-8 p-4 md:p-6 bg-black/60 border border-[#7cd0d7]/50 rounded-2xl text-left max-w-3xl mx-auto shadow-[0_0_15px_rgba(124,208,215,0.2)]">
                               <p className="text-[#7cd0d7] font-bold text-lg md:text-2xl mb-2">💡 詳解說明：</p>
@@ -729,7 +726,7 @@
 
                     <div className="space-y-3 md:space-y-4 flex-1 overflow-y-auto pr-2 pb-4">
                       {leaderboardData.length === 0 && <p className="text-center text-gray-500 text-xl md:text-2xl">尚無排名資料</p>}
-                      {leaderboardData.slice(0, 7).map((p, i) => (
+                      {leaderboardData.map((p, i) => (
                         <div key={i} className="flex flex-col md:flex-row justify-between items-center bg-gray-900/80 p-4 md:p-5 lg:p-6 rounded-2xl border border-[#00FF41]/40 text-xl md:text-3xl lg:text-4xl gap-2 md:gap-0">
                           <div className="flex gap-4 md:gap-6 items-center w-full md:w-auto">
                             <span className="text-gray-400 font-bold w-8 md:w-12 text-right">{i + 1}.</span>
@@ -749,7 +746,7 @@
                   <div className="w-full max-w-5xl bg-black/90 p-6 md:p-12 lg:p-16 rounded-3xl border-4 border-yellow-500 shadow-[0_0_80px_rgba(250,204,21,0.5)] mx-auto flex flex-col h-full">
                      <h2 className="text-4xl md:text-6xl lg:text-8xl font-bold text-center mb-6 md:mb-10 text-yellow-400 animate-pulse drop-shadow-[0_0_20px_rgba(250,204,21,0.8)] shrink-0">🏆 最終榮譽榜 🏆</h2>
                      <div className="space-y-4 md:space-y-6 flex-1 overflow-y-auto pr-2 pb-4 pt-4">
-                      {leaderboardData.slice(0, 5).map((p, i) => (
+                      {leaderboardData.map((p, i) => (
                         <div key={i} className={`flex flex-col md:flex-row justify-between items-center p-4 md:p-6 lg:p-8 rounded-2xl border-2 text-2xl md:text-4xl lg:text-5xl
                           ${i === 0 ? 'bg-yellow-500/20 border-yellow-400 text-yellow-400 font-bold scale-[1.02] md:scale-110 my-4 md:my-8 shadow-[0_0_30px_rgba(250,204,21,0.5)]' :
                             i === 1 ? 'bg-gray-300/10 border-gray-300 text-gray-200 font-bold' :
@@ -924,74 +921,76 @@
               )}
 
               {gameState === 'result' && (
-                <div className="text-center space-y-6 w-full max-w-2xl mx-auto my-auto py-8">
-                  <h2 className="text-4xl md:text-6xl font-bold text-white drop-shadow-[0_0_10px_#00FF41]">回合結束</h2>
-                  <div className="bg-black/60 p-6 md:p-8 rounded-2xl border-2 border-[#00FF41]/50 space-y-4 shadow-xl relative">
+                <div className="text-center space-y-6 w-full max-w-2xl mx-auto my-auto py-8 flex flex-col h-full">
+                  <h2 className="text-4xl md:text-6xl font-bold text-white drop-shadow-[0_0_10px_#00FF41] shrink-0">回合結束</h2>
+                  <div className="bg-black/60 p-6 md:p-8 rounded-2xl border-2 border-[#00FF41]/50 space-y-4 shadow-xl relative flex-1 flex flex-col overflow-hidden">
 
-                    {correctAnswer && !isBingoStage && (
-                      <div className="mb-2">
-                        <p className="text-[#00FF41]/80 text-lg">本題正確答案：</p>
-                        <p className="text-3xl text-white font-bold tracking-widest">{correctAnswer}</p>
+                    <div className="shrink-0">
+                      {correctAnswer && !isBingoStage && (
+                        <div className="mb-2">
+                          <p className="text-[#00FF41]/80 text-lg">本題正確答案：</p>
+                          <p className="text-3xl text-white font-bold tracking-widest">{correctAnswer}</p>
 
-                        {/* 🌟 玩家手機畫面顯示詳解 */}
-                        {currentQuestionData?.explanation && (
-                          <div className="mt-4 p-4 md:p-5 bg-black/60 border border-[#7cd0d7]/50 rounded-xl text-left shadow-[0_0_10px_rgba(124,208,215,0.2)]">
-                            <p className="text-[#7cd0d7] font-bold text-sm md:text-base mb-2">💡 詳解說明：</p>
-                            <p className="text-gray-200 text-sm md:text-base leading-relaxed whitespace-pre-wrap">{currentQuestionData.explanation}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {isBingoStage ? (
-                       <div className="space-y-2">
-                         {myRank > 0 ? (
-                           <p className="text-3xl text-green-500 font-bold">🎉 第 {myRank} 名 Bingo!</p>
-                         ) : (
-                           <p className="text-2xl text-gray-400 font-bold">👍 挑戰結束 (未進入排名)</p>
-                         )}
-                         <p className="text-4xl md:text-5xl mt-4 text-yellow-400 font-bold drop-shadow-[0_0_15px_rgba(250,204,21,0.8)] animate-bounce">
-                           +{myAddedScore}
-                         </p>
-                       </div>
-                    ) : (
-                      amICorrect ? (
-                        <div className="space-y-2 flex flex-col items-center">
-                          <p className="text-3xl text-green-500 font-bold mb-3">✅ 答案正確！</p>
-                          <div className="flex justify-center items-center gap-3 text-white text-lg bg-[#00FF41]/20 w-fit px-4 py-1 rounded-full border border-[#00FF41]/50">
-                            ⏱️ 耗時: <span className="font-bold text-[#00FF41]">{myTimeTaken} 秒</span>
-                          </div>
-                          <p className="text-4xl md:text-5xl mt-4 text-yellow-400 font-bold drop-shadow-[0_0_15px_rgba(250,204,21,0.8)] animate-bounce">
-                            +{myAddedScore}
-                          </p>
+                          {currentQuestionData?.explanation && (
+                            <div className="mt-4 p-4 md:p-5 bg-black/60 border border-[#7cd0d7]/50 rounded-xl text-left shadow-[0_0_10px_rgba(124,208,215,0.2)]">
+                              <p className="text-[#7cd0d7] font-bold text-sm md:text-base mb-2">💡 詳解說明：</p>
+                              <p className="text-gray-200 text-sm md:text-base leading-relaxed whitespace-pre-wrap">{currentQuestionData.explanation}</p>
+                            </div>
+                          )}
                         </div>
-                      ) : myLastAnswer === '未作答' ? (
-                        <div className="space-y-2 flex flex-col items-center py-4">
-                          <p className="text-3xl md:text-4xl text-gray-400 font-bold">⏳ 時間到 / 未作答</p>
-                        </div>
+                      )}
+
+                      {isBingoStage ? (
+                         <div className="space-y-2">
+                           {myRank > 0 ? (
+                             <p className="text-3xl text-green-500 font-bold">🎉 第 {myRank} 名 Bingo!</p>
+                           ) : (
+                             <p className="text-2xl text-gray-400 font-bold">👍 挑戰結束 (未進入排名)</p>
+                           )}
+                           <p className="text-4xl md:text-5xl mt-4 text-yellow-400 font-bold drop-shadow-[0_0_15px_rgba(250,204,21,0.8)] animate-bounce">
+                             +{myAddedScore}
+                           </p>
+                         </div>
                       ) : (
-                        <div className="space-y-3 flex flex-col items-center py-4">
-                          <p className="text-3xl md:text-4xl text-red-500 font-bold">❌ 答案錯誤</p>
-                          <div className="flex justify-center items-center gap-2 text-white text-lg bg-red-500/20 w-fit px-4 py-2 rounded-full border border-red-500/50">
-                            你的答案: <span className="font-bold text-red-400">{myLastAnswer || '(空白)'}</span>
+                        amICorrect ? (
+                          <div className="space-y-2 flex flex-col items-center">
+                            <p className="text-3xl text-green-500 font-bold mb-3">✅ 答案正確！</p>
+                            <div className="flex justify-center items-center gap-3 text-white text-lg bg-[#00FF41]/20 w-fit px-4 py-1 rounded-full border border-[#00FF41]/50">
+                              ⏱️ 耗時: <span className="font-bold text-[#00FF41]">{myTimeTaken} 秒</span>
+                            </div>
+                            <p className="text-4xl md:text-5xl mt-4 text-yellow-400 font-bold drop-shadow-[0_0_15px_rgba(250,204,21,0.8)] animate-bounce">
+                              +{myAddedScore}
+                            </p>
                           </div>
-                        </div>
-                      )
-                    )}
+                        ) : myLastAnswer === '未作答' ? (
+                          <div className="space-y-2 flex flex-col items-center py-4">
+                            <p className="text-3xl md:text-4xl text-gray-400 font-bold">⏳ 時間到 / 未作答</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-3 flex flex-col items-center py-4">
+                            <p className="text-3xl md:text-4xl text-red-500 font-bold">❌ 答案錯誤</p>
+                            <div className="flex justify-center items-center gap-2 text-white text-lg bg-red-500/20 w-fit px-4 py-2 rounded-full border border-red-500/50">
+                              你的答案: <span className="font-bold text-red-400">{myLastAnswer || '(空白)'}</span>
+                            </div>
+                          </div>
+                        )
+                      )}
 
-                    <div className="h-px w-full bg-[#00FF41]/20 my-4"></div>
-                    <p className="text-lg md:text-xl text-white mb-2">🏆 你的總積分：<span className="text-3xl font-bold text-yellow-400">{myScore}</span></p>
+                      <div className="h-px w-full bg-[#00FF41]/20 my-4"></div>
+                      <p className="text-lg md:text-xl text-white mb-2">🏆 你的總積分：<span className="text-3xl font-bold text-yellow-400">{myScore}</span></p>
+                    </div>
 
-                    <div className="mt-6 text-left">
-                       <p className="text-[#00FF41]/80 text-sm mb-2 border-b border-[#00FF41]/30 pb-1">排行榜 Top 5</p>
-                       <div className="space-y-2">
-                         {leaderboardData.slice(0, 5).map((p, i) => (
+                    <div className="mt-2 text-left flex flex-col flex-1 min-h-[150px] overflow-hidden">
+                       <p className="text-[#00FF41]/80 text-sm mb-2 border-b border-[#00FF41]/30 pb-1 shrink-0">完整排行榜</p>
+                       <div className="space-y-2 overflow-y-auto flex-1 pr-1 pb-2">
+                         {leaderboardData.length === 0 && <p className="text-center text-gray-500 text-sm">尚無排名資料</p>}
+                         {leaderboardData.map((p, i) => (
                            <div key={i} className="flex justify-between items-center text-sm md:text-base bg-[#00FF41]/5 p-2 rounded border border-[#00FF41]/20">
-                             <div className="flex gap-2 items-center">
-                               <span className="text-gray-400 w-4 font-bold">{i + 1}.</span>
-                               <span className="text-white truncate max-w-[100px] md:max-w-[200px]">{p.name}</span>
+                             <div className="flex gap-2 items-center w-full">
+                               <span className="text-gray-400 w-4 font-bold text-right">{i + 1}.</span>
+                               <span className="text-white truncate max-w-[120px] md:max-w-[200px]">{p.name}</span>
                              </div>
-                             <span className="text-yellow-400 font-bold whitespace-nowrap">{p.score} 分</span>
+                             <span className="text-yellow-400 font-bold whitespace-nowrap ml-2">{p.score} 分</span>
                            </div>
                          ))}
                        </div>
@@ -1003,13 +1002,13 @@
 
               {gameState === 'final_leaderboard' && (
                 <div className="text-center w-full max-w-3xl mx-auto my-auto py-8 flex flex-col h-full max-h-[80vh]">
-                  <h2 className="text-4xl md:text-6xl font-bold text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.8)] mb-6 animate-pulse">🏆 最終總排行 🏆</h2>
+                  <h2 className="text-4xl md:text-6xl font-bold text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.8)] mb-6 animate-pulse shrink-0">🏆 最終總排行 🏆</h2>
 
-                  <div className="bg-black/60 p-6 md:p-8 rounded-2xl border-2 border-yellow-500/50 shadow-[0_0_30px_rgba(250,204,21,0.2)] flex-1 overflow-y-auto">
+                  <div className="bg-black/60 p-6 md:p-8 rounded-2xl border-2 border-yellow-500/50 shadow-[0_0_30px_rgba(250,204,21,0.2)] flex-1 overflow-y-auto pr-2 pb-4">
                     <div className="space-y-3">
                       {leaderboardData.map((p, i) => (
                         <div key={i} className={`flex justify-between items-center text-lg md:text-2xl p-4 rounded-xl border transition-all
-                          ${i === 0 ? 'bg-yellow-500/20 border-yellow-400 text-yellow-400 font-bold scale-[1.02] md:scale-110 my-4 shadow-[0_0_15px_rgba(250,204,21,0.5)]' :
+                          ${i === 0 ? 'bg-yellow-500/20 border-yellow-400 text-yellow-400 font-bold scale-105 my-4 shadow-[0_0_15px_rgba(250,204,21,0.5)]' :
                             i === 1 ? 'bg-gray-300/10 border-gray-300 text-gray-200 font-bold' :
                             i === 2 ? 'bg-orange-400/10 border-orange-400 text-orange-300 font-bold' :
                             'bg-[#00FF41]/5 border-[#00FF41]/20 text-white'}`}>

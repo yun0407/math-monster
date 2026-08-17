@@ -464,7 +464,7 @@
                 <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
                   {(gameState === 'result' || gameState === 'final_leaderboard') ? (
                     <>
-                      <h2 className="text-xl mb-4 border-b border-gray-600 pb-2 text-yellow-400 font-bold">🏆 {gameState === 'final_leaderboard' ? '最終總排行' : '完整排行榜'}</h2>
+                      <h2 className="text-xl mb-4 border-b border-gray-600 pb-2 text-yellow-400 font-bold">🏆 {gameState === 'final_leaderboard' ? '最終總排行' : '排行榜 Top 5'}</h2>
                       <div className="flex flex-col gap-2">
                         {leaderboardData.map((p, i) => (
                           <div key={i} className="bg-gray-900 px-4 py-3 rounded flex justify-between items-center border border-[#00FF41]/30">
@@ -860,27 +860,29 @@
 
           <div className="relative z-10 w-full max-w-[430px] md:max-w-3xl lg:max-w-4xl h-[95dvh] md:h-[85vh] bg-black/85 md:border md:border-[#00FF41]/30 md:rounded-2xl flex flex-col shadow-[0_0_40px_rgba(0,255,65,0.15)] backdrop-blur-[2px]">
 
-            <div className="flex flex-wrap items-center justify-between p-3 md:p-4 border-b border-[#00FF41]/30 bg-black/50 md:rounded-t-2xl relative z-20 shrink-0 gap-y-2">
-              <div className="flex items-center gap-1 md:gap-2 flex-1 min-w-[200px]">
-                <span className="font-bold tracking-widest text-sm md:text-xl drop-shadow-[0_0_5px_#00FF41] flex items-center flex-wrap shrink-0">
-                  MATH_MONSTER LIVE
-                  {gameState.startsWith('stage_') && (
-                    <span className="text-[#00FF41]/70 text-[10px] md:text-sm ml-1 md:ml-2 whitespace-nowrap">
-                      | {gameState === 'stage_1' ? 'STAGE_01: SPEED_HUNT' :
-                         gameState === 'stage_2' ? 'STAGE_02: BINGO' :
-                         gameState === 'stage_3' ? 'STAGE_03: DETECTIVE' :
-                         gameState === 'stage_4' ? 'STAGE_04: MONSTER' : ''}
-                    </span>
-                  )}
+            {/* 🌟 玩家畫面上方 Banner：支援自動換行與完整玩家名稱顯示 */}
+            <div className="flex flex-wrap items-center justify-between p-3 md:p-4 border-b border-[#00FF41]/30 bg-black/50 md:rounded-t-2xl relative z-20 shrink-0 gap-3">
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold tracking-widest text-base md:text-xl drop-shadow-[0_0_5px_#00FF41] whitespace-nowrap">
+                  MATH_MONSTER
                 </span>
-                <div className={`w-2 h-2 md:w-3 md:h-3 rounded-full ml-1 md:ml-2 shrink-0 ${isConnected ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-red-500 animate-pulse'}`} title={isConnected ? '已連線' : '斷線'}></div>
+                {gameState.startsWith('stage_') && (
+                  <span className="text-[#00FF41]/70 text-[11px] md:text-sm whitespace-nowrap">
+                    | {gameState === 'stage_1' ? 'STAGE_01: SPEED_HUNT' :
+                       gameState === 'stage_2' ? 'STAGE_02: BINGO' :
+                       gameState === 'stage_3' ? 'STAGE_03: DETECTIVE' :
+                       gameState === 'stage_4' ? 'STAGE_04: MONSTER' : ''}
+                  </span>
+                )}
+                <div className={`w-2 h-2 md:w-3 md:h-3 rounded-full shrink-0 ${isConnected ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 'bg-red-500 animate-pulse'}`} title={isConnected ? '已連線' : '斷線'}></div>
               </div>
 
               {gameState !== 'login' && (
-                <div className="flex gap-2 items-center bg-black/50 px-2 py-1 md:px-3 md:py-1 rounded-full border border-[#00FF41]/20 text-xs md:text-base shrink-0">
-                  <span className="text-[#00FF41]/90 whitespace-nowrap max-w-[80px] md:max-w-[150px] truncate">{nickname}</span>
-                  <div className="h-3 md:h-4 w-[1px] bg-[#00FF41]/20"></div>
-                  <span className="text-yellow-400 font-bold whitespace-nowrap">🏆 {myScore}</span>
+                <div className="flex gap-2 items-center bg-black/50 px-3 py-1.5 rounded-full border border-[#00FF41]/20 text-sm md:text-base shrink-0 ml-auto max-w-full">
+                  <span className="text-[#00FF41]/90 font-bold break-all">{nickname}</span>
+                  <div className="h-3 md:h-4 w-[1px] bg-[#00FF41]/20 shrink-0"></div>
+                  <span className="text-yellow-400 font-bold whitespace-nowrap shrink-0">🏆 {myScore}</span>
                 </div>
               )}
             </div>
@@ -1008,7 +1010,7 @@
                     <div className="space-y-3">
                       {leaderboardData.map((p, i) => (
                         <div key={i} className={`flex justify-between items-center text-lg md:text-2xl p-4 rounded-xl border transition-all
-                          ${i === 0 ? 'bg-yellow-500/20 border-yellow-400 text-yellow-400 font-bold scale-105 my-4 shadow-[0_0_15px_rgba(250,204,21,0.5)]' :
+                          ${i === 0 ? 'bg-yellow-500/20 border-yellow-400 text-yellow-400 font-bold scale-[1.02] md:scale-110 my-4 md:my-8 shadow-[0_0_15px_rgba(250,204,21,0.5)]' :
                             i === 1 ? 'bg-gray-300/10 border-gray-300 text-gray-200 font-bold' :
                             i === 2 ? 'bg-orange-400/10 border-orange-400 text-orange-300 font-bold' :
                             'bg-[#00FF41]/5 border-[#00FF41]/20 text-white'}`}>

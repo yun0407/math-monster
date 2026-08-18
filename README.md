@@ -2,7 +2,7 @@
 
 > 一款專為線下實體派對打造的「大型多人即時互動」網頁遊戲。支援大螢幕投放、主持人控場面板，以及玩家手機跨平台掃碼即玩。
 
-[![Demo](入口)](https://math-monster-2026.vercel.app/)
+[Demo](https://math-monster-2026.vercel.app/)
 
 ---
 
@@ -20,10 +20,12 @@
 
 ## 畫面展示 (Screenshots)
 
-| 大螢幕 LIVE 畫面 | 玩家手機操作畫面 | 主持人控制面板 |
+| 大螢幕等待大廳畫面 | 玩家手機操作畫面 | 主持人控制面板 |
 | :---: | :---: | :---: |
-| <img src="https://myppt.cc/u1FLS" width="250"/> | <img src="https://myppt.cc/Jaitn" width="150"/> | <img src="https://myppt.cc/Vy7ll" width="250"/> |
-| <img src="放入你的大螢幕截圖網址" width="250"/> | <img src="放入你的手機版截圖網址" width="150"/> | <img src="放入你的主持人面板截圖網址" width="250"/> |
+| <img width="1470" height="833" alt="等待大廳畫面" src="https://github.com/user-attachments/assets/26876c9e-f49b-4a7a-a478-91216582a629" />|<img width="603" height="1238" alt="玩家手機操作畫面" src="https://github.com/user-attachments/assets/f1241e78-e84d-42a6-97aa-81215c88202d" />|<img width="1470" height="833" alt="主持人控制面板" src="https://github.com/user-attachments/assets/f82e55c1-77a3-4193-ba7d-f811f0e63911" />|
+| 大螢幕投放畫面 | 賓果遊玩畫面 | 排行榜公布 |
+|<img width="1470" height="833" alt="題目" src="https://github.com/user-attachments/assets/a615dc10-2cc1-4f6a-b815-cd242d79b860" />|<img width="1110" height="611" alt="賓果遊玩畫面" src="https://github.com/user-attachments/assets/dd775e99-cb7b-40de-94ef-a98df0c47300" />| <img width="1114" height="613" alt="榮譽版" src="https://github.com/user-attachments/assets/c5365f45-9afa-422b-bafc-857e0787dc7f" />|
+
 
 ---
 

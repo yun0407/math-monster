@@ -15,6 +15,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def normalize_answer(text) -> str:
+    """比對用的正規化：忽略大小寫與前後空白。顯示一律用原始字串，不能拿這個結果去公布答案。"""
+    return str(text).strip().lower()
+
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: dict[WebSocket, str] = {}
@@ -22,6 +27,7 @@ class ConnectionManager:
         self.stage_start_time = 0
         self.current_time_limit = 0
         self.current_correct_answer = ""
+        self.current_answer_key = ""
         self.current_stage = ""
         self.bingo_winners = []
         self.called_numbers = []
@@ -167,7 +173,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 manager.round_settled = False
 
                 raw_ans = question_data.get("answer", "")
-                manager.current_correct_answer = str(raw_ans).strip().lower() if raw_ans else ""
+                manager.current_correct_answer = str(raw_ans).strip() if raw_ans else ""
+                manager.current_answer_key = normalize_answer(manager.current_correct_answer)
 
                 for p in manager.players_state.values():
                     p["round_added_score"] = 0
@@ -204,7 +211,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif action_type == "SUBMIT_ANSWER":
                 name = message.get("name")
-                player_answer = str(message.get("answer", "")).strip().lower()
+                player_answer = str(message.get("answer", "")).strip()
+                answer_key = normalize_answer(player_answer)
 
                 if name in manager.players_state and not manager.players_state[name].get("has_answered"):
                     manager.players_state[name]["last_answer"] = player_answer
@@ -236,9 +244,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         remaining = max(0, manager.current_time_limit - time_taken)
 
                         is_correct = False
-                        if player_answer == "未作答":
-                             is_correct = False
-                        elif manager.current_correct_answer == "" or player_answer == manager.current_correct_answer:
+                        if answer_key == "未作答":
+                            is_correct = False
+                        elif manager.current_answer_key == "" or answer_key == manager.current_answer_key:
                             is_correct = True
 
                         points = round(10 + (remaining * 0.5), 1) if is_correct else 0

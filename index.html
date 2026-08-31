@@ -439,6 +439,10 @@
         );
       };
 
+      const onlinePlayers = hostPlayerDetails.filter(p => p.is_online);
+      const onlinePlayerCount = onlinePlayers.length;
+      const answeredOnlineCount = onlinePlayers.filter(p => p.has_answered).length;
+
       // ==========================================
       // 1. 主持人後台 (Host UI)
       // ==========================================
@@ -479,7 +483,14 @@
                     </>
                   ) : (
                     <>
-                      <h2 className="text-xl mb-4 border-b border-gray-600 pb-2">連線挑戰者狀態</h2>
+                      <h2 className="text-xl mb-4 border-b border-gray-600 pb-2 flex items-center justify-between gap-2">
+                        <span>連線挑戰者狀態</span>
+                        {gameState.startsWith('stage_') && gameState !== 'stage_2' && (
+                          <span className="text-sm text-yellow-400 font-bold whitespace-nowrap">
+                            已作答 {answeredOnlineCount} / {onlinePlayerCount}
+                          </span>
+                        )}
+                      </h2>
                       <div className="flex flex-col gap-2">
                         {hostPlayerDetails.length === 0 && <p className="text-gray-500">等待挑戰者連線...</p>}
                         {hostPlayerDetails.map((p, i) => (

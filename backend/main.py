@@ -25,6 +25,7 @@ class ConnectionManager:
         self.current_stage = ""
         self.bingo_winners = []
         self.called_numbers = []
+        self.round_settled = True
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
@@ -38,11 +39,16 @@ class ConnectionManager:
                 print(f"❌ [斷線] {name} 已斷開連線")
 
     async def broadcast(self, message: dict):
+        payload = json.dumps(message)
         for connection in list(self.active_connections.keys()):
             try:
-                await connection.send_text(json.dumps(message))
+                await connection.send_text(payload)
             except Exception:
-                pass
+                # 送不出去代表這條連線已經死了，直接清掉避免變成幽靈佔住名單
+                self.active_connections.pop(connection, None)
+
+    def online_player_names(self):
+        return [n for n in self.active_connections.values() if n and n not in ["HOST", "DISPLAY"]]
 
     async def broadcast_host_update(self):
         online_names = list(self.active_connections.values())
@@ -57,6 +63,64 @@ class ConnectionManager:
             for k, v in self.players_state.items()
         ]
         await self.broadcast({"type": "HOST_UPDATE", "player_details": player_details})
+
+    async def settle_round(self):
+        """統一結算入口：補齊未作答者狀態、算分、廣播排行榜。"""
+        self.round_settled = True
+
+        for p_state in self.players_state.values():
+            if p_state.get("has_answered"):
+                continue
+            if self.current_stage == "stage_2":
+                p_state["round_added_score"] = 3
+                p_state["score"] = round(p_state["score"] + 3, 1)
+                p_state["has_answered"] = True
+                p_state["rank"] = 0
+                p_state["last_answer"] = "未連線"
+            else:
+                p_state["last_answer"] = "未作答"
+                p_state["has_answered"] = True
+                p_state["is_correct"] = False
+                p_state["round_added_score"] = 0
+
+        leaderboard = sorted(
+            [
+                {
+                    "name": k,
+                    "score": v["score"],
+                    "added_score": v.get("round_added_score", 0),
+                    "time_taken": v.get("round_time_taken", 0),
+                    "is_correct": v.get("is_correct", False),
+                    "rank": v.get("rank", -1),
+                    "last_answer": v.get("last_answer", "")
+                }
+                for k, v in self.players_state.items()
+            ],
+            key=lambda x: x["score"],
+            reverse=True
+        )
+
+        await self.broadcast({
+            "type": "CHANGE_STATE",
+            "state": "result",
+            "leaderboard": leaderboard,
+            "correct_answer": self.current_correct_answer
+        })
+
+    async def maybe_auto_settle(self):
+        """只要所有「還在線上」的挑戰者都作答完畢，就提早收卷。"""
+        if self.round_settled or self.current_stage == "stage_2":
+            return
+
+        active_players = self.online_player_names()
+        if not active_players:
+            return
+
+        if not all(self.players_state.get(p, {}).get("has_answered") for p in active_players):
+            return
+
+        print(f"✅ 所有上線挑戰者 ({len(active_players)} 人) 皆已作答，提早收卷！")
+        await self.settle_round()
 
 
 manager = ConnectionManager()
@@ -88,8 +152,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         "bingo_lines": 0
                     }
 
-                online_players = [n for n in manager.active_connections.values() if n and n not in ["HOST", "DISPLAY"]]
-                await manager.broadcast({"type": "UPDATE_PLAYERS", "players": online_players})
+                await manager.broadcast({"type": "UPDATE_PLAYERS", "players": manager.online_player_names()})
                 await manager.broadcast_host_update()
 
             elif action_type == "START_TIMER":
@@ -101,6 +164,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 manager.current_time_limit = message.get("time", 30)
                 manager.bingo_winners = []
                 manager.called_numbers = []
+                manager.round_settled = False
 
                 raw_ans = question_data.get("answer", "")
                 manager.current_correct_answer = str(raw_ans).strip().lower() if raw_ans else ""
@@ -186,88 +250,17 @@ async def websocket_endpoint(websocket: WebSocket):
                         manager.players_state[name]["is_correct"] = is_correct
 
                     await manager.broadcast_host_update()
-
-                    # 🌟 [新增] 自動偵測：是否所有線上的玩家都作答了？
-                    if manager.current_stage != "stage_2":
-                        online_names = list(manager.active_connections.values())
-                        active_players = [n for n in online_names if n and n not in ["HOST", "DISPLAY"]]
-
-                        if len(active_players) > 0:
-                            all_answered = all(manager.players_state.get(p, {}).get("has_answered") for p in active_players)
-                            if all_answered:
-                                print("✅ 所有上線挑戰者皆已作答，提早收卷！")
-
-                                # 幫斷線或未作答的離線玩家補上狀態，避免資料缺失
-                                for p_name, p_state in manager.players_state.items():
-                                    if not p_state.get("has_answered"):
-                                        p_state["last_answer"] = "未作答"
-                                        p_state["has_answered"] = True
-                                        p_state["is_correct"] = False
-                                        p_state["round_added_score"] = 0
-
-                                leaderboard = [
-                                    {
-                                        "name": k,
-                                        "score": v["score"],
-                                        "added_score": v.get("round_added_score", 0),
-                                        "time_taken": v.get("round_time_taken", 0),
-                                        "is_correct": v.get("is_correct", False),
-                                        "rank": v.get("rank", -1),
-                                        "last_answer": v.get("last_answer", "")
-                                    }
-                                    for k, v in manager.players_state.items()
-                                ]
-                                leaderboard = sorted(leaderboard, key=lambda x: x["score"], reverse=True)
-
-                                await manager.broadcast({
-                                    "type": "CHANGE_STATE",
-                                    "state": "result",
-                                    "leaderboard": leaderboard,
-                                    "correct_answer": manager.current_correct_answer
-                                })
+                    await manager.maybe_auto_settle()
 
             elif action_type == "CHANGE_STATE" and message.get("state") == "result":
-                if manager.current_stage == "stage_2":
-                    for p_name, p_state in manager.players_state.items():
-                        if not p_state.get("has_answered"):
-                            p_state["round_added_score"] = 3
-                            p_state["score"] = round(p_state["score"] + 3, 1)
-                            p_state["has_answered"] = True
-                            p_state["rank"] = 0
-                            p_state["last_answer"] = "未連線"
-                else:
-                    for p_name, p_state in manager.players_state.items():
-                        if not p_state.get("has_answered"):
-                            p_state["last_answer"] = "未作答"
-                            p_state["has_answered"] = True
-                            p_state["is_correct"] = False
-                            p_state["round_added_score"] = 0
-
-                leaderboard = [
-                    {
-                        "name": k,
-                        "score": v["score"],
-                        "added_score": v.get("round_added_score", 0),
-                        "time_taken": v.get("round_time_taken", 0),
-                        "is_correct": v.get("is_correct", False),
-                        "rank": v.get("rank", -1),
-                        "last_answer": v.get("last_answer", "")
-                    }
-                    for k, v in manager.players_state.items()
-                ]
-                leaderboard = sorted(leaderboard, key=lambda x: x["score"], reverse=True)
-
-                await manager.broadcast({
-                    "type": "CHANGE_STATE",
-                    "state": "result",
-                    "leaderboard": leaderboard,
-                    "correct_answer": manager.current_correct_answer
-                })
+                await manager.settle_round()
 
             elif action_type == "CHANGE_STATE":
+                manager.round_settled = True
                 await manager.broadcast(message)
 
             elif action_type == "SHOW_FINAL_LEADERBOARD":
+                manager.round_settled = True
                 leaderboard = [
                     {"name": k, "score": v["score"]}
                     for k, v in manager.players_state.items()
@@ -301,9 +294,12 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         await manager.broadcast_host_update()
-        online_players = [n for n in manager.active_connections.values() if n and n not in ["HOST", "DISPLAY"]]
-        await manager.broadcast({"type": "UPDATE_PLAYERS", "players": online_players})
-    except Exception as e:
+        await manager.broadcast({"type": "UPDATE_PLAYERS", "players": manager.online_player_names()})
+        # 若離線的正是最後一位未作答者，剩下的人不該再被留在倒數裡
+        await manager.maybe_auto_settle()
+    except Exception:
         traceback.print_exc()
         manager.disconnect(websocket)
         await manager.broadcast_host_update()
+        await manager.broadcast({"type": "UPDATE_PLAYERS", "players": manager.online_player_names()})
+        await manager.maybe_auto_settle()
